@@ -1,0 +1,104 @@
+{
+  "vhosts": [
+    { "name": "openmrs" }
+  ],
+  "exchanges": [
+    {
+      "name": "openmrs.events",
+      "vhost": "openmrs",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "openmrs.events.dlx",
+      "vhost": "openmrs",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "appointments",
+      "vhost": "openmrs",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "openmrs.events.dlx",
+        "x-dead-letter-routing-key": "appointments.dead",
+        "x-message-ttl": 86400000
+      }
+    },
+    {
+      "name": "appointments.dead",
+      "vhost": "openmrs",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "appointment.cancelled",
+      "vhost": "openmrs",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "openmrs.events.dlx",
+        "x-dead-letter-routing-key": "appointment.cancelled.dead",
+        "x-message-ttl": 86400000
+      }
+    },
+    {
+      "name": "appointment.cancelled.dead",
+      "vhost": "openmrs",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "openmrs.events",
+      "vhost": "openmrs",
+      "destination": "appointments",
+      "destination_type": "queue",
+      "routing_key": "appointment.scheduled",
+      "arguments": {}
+    },
+    {
+      "source": "openmrs.events",
+      "vhost": "openmrs",
+      "destination": "appointments",
+      "destination_type": "queue",
+      "routing_key": "appointment.updated",
+      "arguments": {}
+    },
+    {
+      "source": "openmrs.events",
+      "vhost": "openmrs",
+      "destination": "appointment.cancelled",
+      "destination_type": "queue",
+      "routing_key": "appointment.cancelled",
+      "arguments": {}
+    },
+    {
+      "source": "openmrs.events.dlx",
+      "vhost": "openmrs",
+      "destination": "appointments.dead",
+      "destination_type": "queue",
+      "routing_key": "appointments.dead",
+      "arguments": {}
+    },
+    {
+      "source": "openmrs.events.dlx",
+      "vhost": "openmrs",
+      "destination": "appointment.cancelled.dead",
+      "destination_type": "queue",
+      "routing_key": "appointment.cancelled.dead",
+      "arguments": {}
+    }
+  ],
+  "permissions": []
+}

@@ -1,0 +1,20 @@
+# Secrets — never commit
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Docker build artefacts
+notification-service/node_modules/
+notification-service/dist/
+notification-service/.next/
+
+# Logs
+*.log

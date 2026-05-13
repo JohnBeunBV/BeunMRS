@@ -1,0 +1,122 @@
+name: CD — Deploy to Portainer
+
+on:
+  workflow_run:
+    workflows: ["CI — Build & Push"]
+    types: [completed]
+    branches: [main, develop]
+
+  # Allow manual re-deploy from the Actions tab
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+      image_tag:
+        description: Image tag to deploy (defaults to latest)
+        required: false
+        default: latest
+
+jobs:
+  deploy-staging:
+    name: Deploy → Staging
+    runs-on: ubuntu-latest
+    # Only run after a successful CI build, or on manual dispatch targeting staging
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'develop') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.environment == 'staging')
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "latest" ]; then
+            TAG="sha-${{ github.event.workflow_run.head_sha || github.sha }}"
+            TAG="${TAG:0:17}"   # sha- + 13 chars
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Update Portainer stack (staging)
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          STACK_ID: ${{ secrets.PORTAINER_STAGING_STACK_ID }}
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+          # Env vars injected into the Portainer stack environment
+          OPENMRS_DB_PASSWORD: ${{ secrets.STAGING_OPENMRS_DB_PASSWORD }}
+          OPENMRS_DB_ROOT_PASSWORD: ${{ secrets.STAGING_OPENMRS_DB_ROOT_PASSWORD }}
+          OPENMRS_API_PASSWORD: ${{ secrets.STAGING_OPENMRS_API_PASSWORD }}
+          RABBITMQ_PASSWORD: ${{ secrets.STAGING_RABBITMQ_PASSWORD }}
+          NOTIFICATION_DB_PASSWORD: ${{ secrets.STAGING_NOTIFICATION_DB_PASSWORD }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          chmod +x .github/scripts/portainer-deploy.sh
+          .github/scripts/portainer-deploy.sh
+
+      - name: Verify deployment health
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          STACK_ID: ${{ secrets.PORTAINER_STAGING_STACK_ID }}
+        run: |
+          chmod +x .github/scripts/portainer-health-check.sh
+          .github/scripts/portainer-health-check.sh
+
+  deploy-production:
+    name: Deploy → Production
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.environment == 'production')
+    environment: production   # requires manual approval gate in GitHub env settings
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "latest" ]; then
+            TAG="sha-${{ github.event.workflow_run.head_sha || github.sha }}"
+            TAG="${TAG:0:17}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Update Portainer stack (production)
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          STACK_ID: ${{ secrets.PORTAINER_PRODUCTION_STACK_ID }}
+          IMAGE_TAG: ${{ steps.tag.outputs.tag }}
+          OPENMRS_DB_PASSWORD: ${{ secrets.PROD_OPENMRS_DB_PASSWORD }}
+          OPENMRS_DB_ROOT_PASSWORD: ${{ secrets.PROD_OPENMRS_DB_ROOT_PASSWORD }}
+          OPENMRS_API_PASSWORD: ${{ secrets.PROD_OPENMRS_API_PASSWORD }}
+          RABBITMQ_PASSWORD: ${{ secrets.PROD_RABBITMQ_PASSWORD }}
+          NOTIFICATION_DB_PASSWORD: ${{ secrets.PROD_NOTIFICATION_DB_PASSWORD }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          chmod +x .github/scripts/portainer-deploy.sh
+          .github/scripts/portainer-deploy.sh
+
+      - name: Verify deployment health
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+          STACK_ID: ${{ secrets.PORTAINER_PRODUCTION_STACK_ID }}
+        run: |
+          chmod +x .github/scripts/portainer-health-check.sh
+          .github/scripts/portainer-health-check.sh
