@@ -1,0 +1,66 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+# ── Ingester ──────────────────────────────────────────────────────────────────
+# WAL disabled — avoids the "mkdir wal: permission denied" crash.
+# For dev/test this is fine; re-enable in production with a writable host mount.
+ingester:
+  wal:
+    enabled: false
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+  chunk_target_size: 1048576
+
+# ── Schema ────────────────────────────────────────────────────────────────────
+# v13 + tsdb replaces the deprecated boltdb-shipper + v11 combo.
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# ── Storage ───────────────────────────────────────────────────────────────────
+# All paths are inside the /loki volume — already mounted and writable.
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: filesystem
+  filesystem:
+    directory: /loki/chunks
+
+# ── Limits ────────────────────────────────────────────────────────────────────
+limits_config:
+  retention_period: 72h
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  # Suppress the "fifocache deprecated" warning
+  query_timeout: 5m
+
+# ── Compactor ─────────────────────────────────────────────────────────────────
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+  retention_enabled: true
+
+# ── Common ────────────────────────────────────────────────────────────────────
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules

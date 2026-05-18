@@ -1,108 +1,133 @@
 version: "3.9"
 
-# ─────────────────────────────────────────────
-# OpenMRS Communication Platform — Full Stack
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenMRS Communication Platform — Sprint 3
+# docker compose up --build
+# ─────────────────────────────────────────────────────────────────────────────
 # Services:
-#   openmrs          — OpenMRS reference application
-#   openmrs-db       — MySQL for OpenMRS
-#   notification-svc — Custom SaaS notification service (this repo)
-#   notification-db  — PostgreSQL for notification service
-#   rabbitmq         — Message broker (OpenMRS → notification-svc)
-# ─────────────────────────────────────────────
+#   OpenMRS O3:  gateway:80, backend:8080, frontend, db (MySQL)
+#   RabbitMQ:    :5672 (AMQP), :15672 (management UI)
+#   Notification DB: Postgres :5432
+#   Notification Service: :8081
+#   FakeComWorld: :1337  (all 4 mock providers)
+#   Loki:         :3100  (log aggregation)
+#   Promtail:     (log shipper — no public port)
+#   Grafana:      :3000  (dashboards)
+# ─────────────────────────────────────────────────────────────────────────────
 
 networks:
   openmrs-net:
     driver: bridge
+  broker-net:
+    driver: bridge
   notification-net:
     driver: bridge
-  broker-net:
+  observability-net:
     driver: bridge
 
 volumes:
-  openmrs-data:
-  openmrs-mysql-data:
+  openmrs-db-data:
+  openmrs-app-data:
   notification-pg-data:
   rabbitmq-data:
+  loki-data:
+  grafana-data:
 
 services:
 
-  # ── OpenMRS ──────────────────────────────────────────────────────────────
-  openmrs:
-    image: openmrs/openmrs-reference-application-distro:${OPENMRS_VERSION:-nightly}
-    container_name: openmrs
-    restart: unless-stopped
-    depends_on:
-      openmrs-db:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      DB_DATABASE: ${OPENMRS_DB_NAME:-openmrs}
-      DB_HOST: openmrs-db
-      DB_USERNAME: ${OPENMRS_DB_USER:-openmrs}
-      DB_PASSWORD: ${OPENMRS_DB_PASSWORD:?OPENMRS_DB_PASSWORD is required}
-      DB_CREATE_TABLES: "true"
-      DB_AUTO_UPDATE: "true"
-      MODULE_WEB_ADMIN: "true"
-    volumes:
-      - openmrs-data:/openmrs/data
-      - ./openmrs/modules:/openmrs/data/modules   # drop extra .omod files here
-      - ./openmrs/config:/openmrs/data/config     # runtime config overrides
-    networks:
-      - openmrs-net
-      - broker-net
-    ports:
-      - "${OPENMRS_PORT:-8080}:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/openmrs/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
+  # ── OpenMRS O3 ─────────────────────────────────────────────────────────────
+  # Official O3 reference application (3 containers + DB)
+  # Ref: https://github.com/openmrs/openmrs-distro-referenceapplication
 
   openmrs-db:
-    image: mysql:8.0
+    image: mariadb:10.11.7
     container_name: openmrs-db
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${OPENMRS_DB_NAME:-openmrs}
-      MYSQL_USER: ${OPENMRS_DB_USER:-openmrs}
-      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD:?OPENMRS_DB_PASSWORD is required}
-      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD:?OPENMRS_DB_ROOT_PASSWORD is required}
+      MYSQL_DATABASE:      ${OMRS_DB_NAME:-openmrs}
+      MYSQL_USER:          ${OMRS_DB_USER:-openmrs}
+      MYSQL_PASSWORD:      ${OMRS_DB_PASSWORD:-openmrs}
+      MYSQL_ROOT_PASSWORD: ${OMRS_DB_ROOT_PASSWORD:-openmrs}
     volumes:
-      - openmrs-mysql-data:/var/lib/mysql
-    networks:
-      - openmrs-net
-    command: >
-      --character-set-server=utf8
-      --collation-server=utf8_general_ci
-      --log-bin-trust-function-creators=1
+      - openmrs-db-data:/var/lib/mysql
+    networks: [openmrs-net]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${OPENMRS_DB_ROOT_PASSWORD}"]
+      test: "mysql --user=${OMRS_DB_USER:-openmrs} --password=${OMRS_DB_PASSWORD:-openmrs} --execute \"SHOW DATABASES;\""
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
-  # ── RabbitMQ ─────────────────────────────────────────────────────────────
+  openmrs-backend:
+    image: openmrs/openmrs-reference-application-3-backend:${OPENMRS_TAG:-nightly}
+    container_name: openmrs-backend
+    restart: unless-stopped
+    depends_on:
+      openmrs-db:
+        condition: service_healthy
+    environment:
+      OMRS_DB_NAME:             ${OMRS_DB_NAME:-openmrs}
+      OMRS_DB_HOSTNAME:         openmrs-db
+      OMRS_DB_USERNAME:         ${OMRS_DB_USER:-openmrs}
+      OMRS_DB_PASSWORD:         ${OMRS_DB_PASSWORD:-openmrs}
+      OMRS_CONFIG_MODULE_WEB_ADMIN:    "true"
+      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
+      OMRS_CONFIG_CREATE_TABLES:       "true"
+      OMRS_ADMIN_USER_PASSWORD:        ${OMRS_ADMIN_PASSWORD:-Admin1234}
+    volumes:
+      - openmrs-app-data:/openmrs/data
+      - ./openmrs/modules:/openmrs/data/modules   # drop custom .omod here
+      - ./openmrs/config:/openmrs/data/config
+    networks: [openmrs-net, broker-net, observability-net]
+    # Backend is accessed through the gateway — no direct port exposure needed
+    # Expose 8080 only for debugging:
+    # ports: ["8080:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/openmrs/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        tag: "openmrs-backend"
+
+  openmrs-frontend:
+    image: openmrs/openmrs-reference-application-3-frontend:${OPENMRS_TAG:-nightly}
+    container_name: openmrs-frontend
+    restart: unless-stopped
+    environment:
+      SPA_PATH:    /openmrs/spa
+      API_URL:     /openmrs
+      SPA_CONFIG_URLS: /openmrs/spa/config-core_demo.json
+    networks: [openmrs-net]
+
+  openmrs-gateway:
+    image: openmrs/openmrs-reference-application-3-gateway:${OPENMRS_TAG:-nightly}
+    container_name: openmrs-gateway
+    restart: unless-stopped
+    depends_on: [openmrs-backend, openmrs-frontend]
+    networks: [openmrs-net]
+    ports:
+      - "${OPENMRS_PORT:-80}:80"
+
+  # ── RabbitMQ ───────────────────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: rabbitmq
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbit}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_DEFAULT_USER:  ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_DEFAULT_PASS:  ${RABBITMQ_PASSWORD:-rabbit_secret}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-openmrs}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
-      - ./infra/rabbitmq/definitions:/etc/rabbitmq/definitions  # pre-seed exchanges/queues
+      - ./infra/rabbitmq/definitions/topology.json:/etc/rabbitmq/definitions/topology.json
       - ./infra/rabbitmq/config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
-    networks:
-      - broker-net
-      - notification-net
+    networks: [broker-net, notification-net, observability-net]
     ports:
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"   # management UI (restrict in prod)
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -110,9 +135,30 @@ services:
       retries: 10
       start_period: 30s
 
-  # ── Notification Service ──────────────────────────────────────────────────
+  # ── Notification Database (PostgreSQL) ─────────────────────────────────────
+  notification-db:
+    image: postgres:16-alpine
+    container_name: notification-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${NOTIFICATION_DB_NAME:-notifications}
+      POSTGRES_USER:     ${NOTIFICATION_DB_USER:-notify}
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notify_secret}
+    volumes:
+      - notification-pg-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    networks: [notification-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DB_USER:-notify}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Notification Service (Spring Boot) ─────────────────────────────────────
   notification-svc:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER:?IMAGE_OWNER is required}/notification-svc:${IMAGE_TAG:-latest}
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
     container_name: notification-svc
     restart: unless-stopped
     depends_on:
@@ -122,44 +168,144 @@ services:
         condition: service_healthy
     environment:
       # Database
-      DATABASE_URL: postgresql://${NOTIFICATION_DB_USER:-notify}:${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}@notification-db:5432/${NOTIFICATION_DB_NAME:-notifications}
-      # Broker
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-rabbit}:${RABBITMQ_PASSWORD}@rabbitmq:5672/${RABBITMQ_VHOST:-openmrs}
-      # OpenMRS REST (for polling / catch-up reconciliation)
-      OPENMRS_BASE_URL: http://openmrs:8080/openmrs
-      OPENMRS_API_USER: ${OPENMRS_API_USER:-admin}
-      OPENMRS_API_PASSWORD: ${OPENMRS_API_PASSWORD:?OPENMRS_API_PASSWORD is required}
-      # App
-      APP_ENV: ${APP_ENV:-production}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    networks:
-      - notification-net
-      - broker-net
+      DB_HOST:     notification-db
+      DB_NAME:     ${NOTIFICATION_DB_NAME:-notifications}
+      DB_USER:     ${NOTIFICATION_DB_USER:-notify}
+      DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notify_secret}
+      # RabbitMQ
+      RABBITMQ_HOST:     rabbitmq
+      RABBITMQ_USER:     ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
+      RABBITMQ_VHOST:    ${RABBITMQ_VHOST:-openmrs}
+      # OpenMRS REST (polling)
+      OPENMRS_BASE_URL:     http://openmrs-gateway/openmrs
+      OPENMRS_API_USER:     ${OMRS_ADMIN_USER:-admin}
+      OPENMRS_API_PASSWORD: ${OMRS_ADMIN_PASSWORD:-Admin1234}
+      # FakeComWorld providers
+      FAKECOMWORLD_BASE_URL:         http://fakecomworld:8080
+      STUDENT_GROUP_HEADER:          ${STUDENT_GROUP:-group-1}
+      # SwiftSend
+      SWIFTSEND_API_KEY:             ${SWIFTSEND_API_KEY:-your-api-key-here}
+      # SecurePost
+      SECUREPOST_CLIENT_ID:          ${SECUREPOST_CLIENT_ID:-securepost-client-id}
+      SECUREPOST_CLIENT_SECRET:      ${SECUREPOST_CLIENT_SECRET:-securepost-secret-key}
+      # LegacyLink
+      LEGACYLINK_USERNAME:           ${LEGACYLINK_USERNAME:-legacylink-user}
+      LEGACYLINK_PASSWORD:           ${LEGACYLINK_PASSWORD:-legacylink-password}
+      # AsyncFlow
+      ASYNCFLOW_API_KEY:             ${ASYNCFLOW_API_KEY:-asyncflow-api-key}
+      # Loki logging
+      LOKI_URL: http://loki:3100/loki/api/v1/push
+    networks: [notification-net, broker-net, openmrs-net, observability-net]
     ports:
-      - "${NOTIFICATION_PORT:-3000}:3000"
+      - "${NOTIFICATION_PORT:-8081}:8080"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        tag: "notification-svc"
 
-  notification-db:
-    image: postgres:16-alpine
-    container_name: notification-db
+  # ── FakeComWorld (mock messaging providers) ─────────────────────────────────
+  # Exposes 4 providers: SwiftSend, SecurePost, LegacyLink, AsyncFlow
+  # All on the same container at port 8080 (mapped to host :1337)
+  fakecomworld:
+    image: ghcr.io/avansict/in2.4-fakecomworld:main
+    container_name: fakecomworld
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${NOTIFICATION_DB_NAME:-notifications}
-      POSTGRES_USER: ${NOTIFICATION_DB_USER:-notify}
-      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}
+      # SwiftSend
+      SwiftSend__ApiKey:                    ${SWIFTSEND_API_KEY:-your-api-key-here}
+      SwiftSend__RateLimit:                 20
+      SwiftSend__RateLimitWindowInSeconds:  60
+      SwiftSend__MaxDelayInMilliseconds:    2000
+      SwiftSend__FaultInjectionRatePercentage: 10
+      # SecurePost
+      SecurePost__ClientId:                 ${SECUREPOST_CLIENT_ID:-securepost-client-id}
+      SecurePost__ClientSecret:             ${SECUREPOST_CLIENT_SECRET:-securepost-secret-key}
+      SecurePost__JwtSecret:                ${SECUREPOST_JWT_SECRET:-your-secret-key-min-32-characters-long-here}
+      SecurePost__JwtExpiryInMinutes:       3
+      SecurePost__RateLimitAuth:            3
+      SecurePost__RateLimitMessage:         10
+      SecurePost__RateLimitWindowInSeconds: 60
+      SecurePost__FaultInjectionRatePercentage: 10
+      # LegacyLink
+      LegacyLink__Username:                 ${LEGACYLINK_USERNAME:-legacylink-user}
+      LegacyLink__Password:                 ${LEGACYLINK_PASSWORD:-legacylink-password}
+      LegacyLink__MinDelayInMilliseconds:   100
+      LegacyLink__MaxDelayInMilliseconds:   3000
+      # AsyncFlow
+      AsyncFlow__ApiKey:                    ${ASYNCFLOW_API_KEY:-asyncflow-api-key}
+      AsyncFlow__RateLimit:                 20
+      AsyncFlow__RateLimitWindowInSeconds:  60
+      AsyncFlow__ProcessingIntervalInSeconds: 5
+      AsyncFlow__MinProcessingDelayInSeconds: 2
+      AsyncFlow__MaxProcessingDelayInSeconds: 15
+      AsyncFlow__FailureRatePercentage:     5
+    networks: [notification-net, observability-net]
+    ports:
+      - "1337:8080"
+    logging:
+      driver: json-file
+      options:
+        tag: "fakecomworld"
+
+  # ── Observability Stack ─────────────────────────────────────────────────────
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
     volumes:
-      - notification-pg-data:/var/lib/postgresql/data
-      - ./infra/postgres/init:/docker-entrypoint-initdb.d   # seed scripts
-    networks:
-      - notification-net
+      - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml
+      - loki-data:/loki
+    networks: [observability-net]
+    ports:
+      - "3100:3100"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DB_USER:-notify} -d ${NOTIFICATION_DB_NAME:-notifications}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: promtail
+    restart: unless-stopped
+    volumes:
+      - ./infra/promtail/promtail-config.yml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    networks: [observability-net]
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-grafana_secret}
+      GF_PATHS_PROVISIONING:      /etc/grafana/provisioning
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+    networks: [observability-net]
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

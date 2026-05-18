@@ -1,0 +1,93 @@
+{
+  "title": "OpenMRS Notification Service",
+  "uid": "notif-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Notification Service Logs",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"notification-svc\"}",
+          "legendFormat": "notification-svc"
+        }
+      ],
+      "options": { "showTime": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 2,
+      "title": "OpenMRS Backend Logs",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"openmrs-backend\"}",
+          "legendFormat": "openmrs"
+        }
+      ],
+      "options": { "showTime": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 3,
+      "title": "FakeComWorld API Calls",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"fakecomworld\"}",
+          "legendFormat": "fakecomworld"
+        }
+      ],
+      "options": { "showTime": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 4,
+      "title": "Provider Errors (last 1h)",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"notification-svc\"} |= \"ERROR\"",
+          "legendFormat": "errors"
+        }
+      ],
+      "options": { "showTime": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 5,
+      "title": "OpenMRS Poller — Poll Events",
+      "type": "logs",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"notification-svc\"} |= \"Polling OpenMRS\"",
+          "legendFormat": "poller"
+        }
+      ],
+      "options": { "showTime": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 6,
+      "title": "All Services — Combined Log Stream",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 38 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=~\"notification-svc|openmrs-backend|fakecomworld|rabbitmq\"}",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "options": { "showTime": true, "sortOrder": "Descending", "dedupStrategy": "none" }
+    }
+  ]
+}

@@ -1,46 +1,46 @@
--- init/00_schema.sql
--- Runs once when the notification-db container is first created.
--- Add your actual migration tool (Flyway, Liquibase, Alembic, etc.)
--- on top of this baseline.
+-- 00_schema.sql — runs on first container start
 
--- Extension: uuid generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ── Outbox table ──────────────────────────────────────────────────────────
--- Used by the notification service for the transactional outbox pattern:
--- writes are committed atomically with business data, then a relay picks
--- them up and publishes to the broker. Guarantees at-least-once delivery
--- even if RabbitMQ or the network is temporarily unavailable.
+-- ── Outbox (transactional at-least-once relay) ────────────────────────────
 CREATE TABLE IF NOT EXISTS outbox_events (
-    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    aggregate_type TEXT        NOT NULL,          -- e.g. 'appointment'
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregate_type TEXT        NOT NULL,
     aggregate_id   TEXT        NOT NULL,
-    event_type     TEXT        NOT NULL,          -- e.g. 'appointment.scheduled'
+    event_type     TEXT        NOT NULL,
     payload        JSONB       NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    published_at   TIMESTAMPTZ,                   -- NULL = pending
+    published_at   TIMESTAMPTZ,
     failed_at      TIMESTAMPTZ,
     retry_count    INT         NOT NULL DEFAULT 0
 );
-
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
     ON outbox_events (created_at)
     WHERE published_at IS NULL AND failed_at IS NULL;
 
--- ── Watermark table ───────────────────────────────────────────────────────
--- Tracks the last-seen cursor per OpenMRS resource type so the polling
--- reconciler knows where to resume after a downtime gap.
+-- ── Watermark (poller / reconciler cursor) ────────────────────────────────
 CREATE TABLE IF NOT EXISTS sync_watermarks (
-    resource_type  TEXT        PRIMARY KEY,       -- e.g. 'appointment'
+    resource_type  TEXT        PRIMARY KEY,
     last_updated   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_cursor    TEXT                           -- opaque: UUID or ISO timestamp
+    last_cursor    TEXT
 );
 
--- ── Notification log ──────────────────────────────────────────────────────
+-- ── Seen appointments (duplicate guard for poller) ────────────────────────
+-- Prevents double-notification when poll windows overlap or service restarts.
+CREATE TABLE IF NOT EXISTS seen_appointments (
+    appointment_uuid TEXT        PRIMARY KEY,
+    openmrs_status   TEXT,
+    queued_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    notified_at      TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_seen_appointments_queued
+    ON seen_appointments (queued_at DESC);
+
+-- ── Notification log (audit trail) ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notification_log (
     id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_uuid   TEXT        NOT NULL,
-    channel        TEXT        NOT NULL,          -- 'sms' | 'email' | 'push'
+    channel        TEXT        NOT NULL,
     event_type     TEXT        NOT NULL,
     status         TEXT        NOT NULL DEFAULT 'pending',
     sent_at        TIMESTAMPTZ,
@@ -48,6 +48,20 @@ CREATE TABLE IF NOT EXISTS notification_log (
     payload        JSONB,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_notification_log_patient
     ON notification_log (patient_uuid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_log_status
+    ON notification_log (status, created_at DESC);
+
+-- ── AsyncFlow pending commands ─────────────────────────────────────────────
+-- Persists AsyncFlow command IDs so the status poller survives restarts.
+CREATE TABLE IF NOT EXISTS async_flow_commands (
+    command_id        TEXT        PRIMARY KEY,
+    appointment_uuid  TEXT        NOT NULL,
+    status            TEXT        NOT NULL DEFAULT 'pending',  -- pending | completed | failed
+    submitted_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at       TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_asyncflow_pending
+    ON async_flow_commands (submitted_at)
+    WHERE status = 'pending';

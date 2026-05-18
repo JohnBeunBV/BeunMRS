@@ -16,5 +16,8 @@ notification-service/node_modules/
 notification-service/dist/
 notification-service/.next/
 
+# OpenMRS Data
+openmrs/
+
 # Logs
 *.log
