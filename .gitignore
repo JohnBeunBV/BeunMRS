@@ -13,11 +13,10 @@ Thumbs.db
 
 # Docker build artefacts
 notification-service/node_modules/
-notification-service/dist/
+notification-service/out/
 notification-service/.next/
-
-# OpenMRS Data
-openmrs/
 
 # Logs
 *.log
+/openmrs/
+/out/

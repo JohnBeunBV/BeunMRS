@@ -39,9 +39,9 @@ services:
   # Official O3 reference application (3 containers + DB)
   # Ref: https://github.com/openmrs/openmrs-distro-referenceapplication
 
-  openmrs-db:
+  db:
     image: mariadb:10.11.7
-    container_name: openmrs-db
+    container_name: db
     restart: unless-stopped
     environment:
       MYSQL_DATABASE:      ${OMRS_DB_NAME:-openmrs}
@@ -58,16 +58,16 @@ services:
       retries: 10
       start_period: 30s
 
-  openmrs-backend:
-    image: openmrs/openmrs-reference-application-3-backend:${OPENMRS_TAG:-nightly}
-    container_name: openmrs-backend
+  backend:
+    image: openmrs/openmrs-reference-application-3-backend:${OPENMRS_TAG:-qa}
+    container_name: backend
     restart: unless-stopped
     depends_on:
-      openmrs-db:
+      db:
         condition: service_healthy
     environment:
       OMRS_DB_NAME:             ${OMRS_DB_NAME:-openmrs}
-      OMRS_DB_HOSTNAME:         openmrs-db
+      OMRS_DB_HOSTNAME:         db
       OMRS_DB_USERNAME:         ${OMRS_DB_USER:-openmrs}
       OMRS_DB_PASSWORD:         ${OMRS_DB_PASSWORD:-openmrs}
       OMRS_CONFIG_MODULE_WEB_ADMIN:    "true"
@@ -83,7 +83,7 @@ services:
     # Expose 8080 only for debugging:
     # ports: ["8080:8080"]
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/openmrs/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs"]
       interval: 30s
       timeout: 10s
       retries: 15
@@ -93,9 +93,9 @@ services:
       options:
         tag: "openmrs-backend"
 
-  openmrs-frontend:
-    image: openmrs/openmrs-reference-application-3-frontend:${OPENMRS_TAG:-nightly}
-    container_name: openmrs-frontend
+  frontend:
+    image: openmrs/openmrs-reference-application-3-frontend:${OPENMRS_TAG:-qa}
+    container_name: frontend
     restart: unless-stopped
     environment:
       SPA_PATH:    /openmrs/spa
@@ -103,11 +103,11 @@ services:
       SPA_CONFIG_URLS: /openmrs/spa/config-core_demo.json
     networks: [openmrs-net]
 
-  openmrs-gateway:
-    image: openmrs/openmrs-reference-application-3-gateway:${OPENMRS_TAG:-nightly}
-    container_name: openmrs-gateway
+  gateway:
+    image: openmrs/openmrs-reference-application-3-gateway:${OPENMRS_TAG:-qa}
+    container_name: gateway
     restart: unless-stopped
-    depends_on: [openmrs-backend, openmrs-frontend]
+    depends_on: [backend, frontend]
     networks: [openmrs-net]
     ports:
       - "${OPENMRS_PORT:-80}:80"
@@ -178,7 +178,7 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit_secret}
       RABBITMQ_VHOST:    ${RABBITMQ_VHOST:-openmrs}
       # OpenMRS REST (polling)
-      OPENMRS_BASE_URL:     http://openmrs-gateway/openmrs
+      OPENMRS_BASE_URL:     http://gateway/openmrs
       OPENMRS_API_USER:     ${OMRS_ADMIN_USER:-admin}
       OPENMRS_API_PASSWORD: ${OMRS_ADMIN_PASSWORD:-Admin1234}
       # FakeComWorld providers
