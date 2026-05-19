@@ -1,6 +1,23 @@
 {
+  "rabbit_version": "3.13.0",
+  "users": [
+    {
+      "name": "rabbit",
+      "password": "rabbit_secret",
+      "tags": "administrator"
+    }
+  ],
   "vhosts": [
     { "name": "openmrs" }
+  ],
+  "permissions": [
+    {
+      "user": "rabbit",
+      "vhost": "openmrs",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
   ],
   "exchanges": [
     {
@@ -99,6 +116,5 @@
       "routing_key": "appointment.cancelled.dead",
       "arguments": {}
     }
-  ],
-  "permissions": []
+  ]
 }

@@ -1,0 +1,90 @@
+package com.openmrs.notification.adapter.swiftsend;
+
+import com.openmrs.notification.model.NotificationChannel;
+import com.openmrs.notification.adapter.NotificationProvider;
+import com.openmrs.notification.model.AppointmentEvent;
+import com.openmrs.notification.model.NotificationChannel;
+import com.openmrs.notification.model.NotificationResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Map;
+
+/**
+ * SwiftSend — REST API authenticated with X-API-KEY header.
+ * Handles rate limiting (429) and random fault injection from FakeComWorld.
+ */
+@Component
+public class SwiftSendProvider implements NotificationProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(SwiftSendProvider.class);
+
+    private final RestTemplate restTemplate;
+    private final String baseUrl;
+    private final String apiKey;
+    private final String studentGroup;
+
+    public SwiftSendProvider(
+            RestTemplate restTemplate,
+            @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
+            @Value("${provider.swiftsend.api-key:your-api-key-here}") String apiKey,
+            @Value("${fakecomworld.student-group:group-1}") String studentGroup) {
+        this.restTemplate = restTemplate;
+        this.baseUrl      = baseUrl;
+        this.apiKey       = apiKey;
+        this.studentGroup = studentGroup;
+    }
+
+    @Override public NotificationChannel channel()    { return NotificationChannel.SMS; }
+    @Override public String providerName()             { return "SwiftSend"; }
+
+    @Override
+    public NotificationResult send(AppointmentEvent event) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-API-KEY",       apiKey);
+            headers.set("X-STUDENT-GROUP", studentGroup);
+
+            Map<String, Object> body = Map.of(
+                    "recipient", event.getPatientPhone() != null ? event.getPatientPhone() : "unknown",
+                    "message",   buildMessage(event),
+                    "reference", event.getAppointmentUuid()
+            );
+
+            ResponseEntity<Map> resp = restTemplate.exchange(
+                    baseUrl + "/api/swiftsend/messages",
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    Map.class
+            );
+
+            if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+                String id = String.valueOf(resp.getBody().getOrDefault("messageId", "unknown"));
+                log.info("[SwiftSend] Sent OK — appointment={} msgId={}", event.getAppointmentUuid(), id);
+                return NotificationResult.ok(id);
+            }
+            return NotificationResult.failure("HTTP " + resp.getStatusCode());
+
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[SwiftSend] Rate limited — will retry via RabbitMQ back-off");
+            return NotificationResult.failure("Rate limited (429)");
+        } catch (Exception ex) {
+            log.error("[SwiftSend] Send failed — appointment={}", event.getAppointmentUuid(), ex);
+            return NotificationResult.failure(ex.getMessage());
+        }
+    }
+
+    private String buildMessage(AppointmentEvent event) {
+        return switch (event.getEventType()) {
+            case SCHEDULED -> String.format("Uw afspraak op %s is bevestigd.", event.getAppointmentTime());
+            case UPDATED   -> String.format("Uw afspraak is gewijzigd naar %s.", event.getAppointmentTime());
+            case CANCELLED -> "Uw afspraak is geannuleerd. Neem contact op om opnieuw in te plannen.";
+        };
+    }
+}
