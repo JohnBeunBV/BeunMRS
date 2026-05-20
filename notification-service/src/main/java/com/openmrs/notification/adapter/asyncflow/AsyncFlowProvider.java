@@ -14,6 +14,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import com.openmrs.notification.util.MessageHelper;
+
 import java.util.List;
 import java.util.Map;
 
@@ -182,12 +184,15 @@ public class AsyncFlowProvider implements NotificationProvider {
     }
 
     private String buildMessage(AppointmentEvent event) {
+        String time     = MessageHelper.formatTime(event.getAppointmentTime());
+        String loc      = MessageHelper.locationSuffix(event.getLocationName());
+        String comments = MessageHelper.commentsSuffix(event.getComments());
         return switch (event.getEventType()) {
-            case SCHEDULED    -> String.format("Afspraak bevestigd op %s", event.getAppointmentTime());
-            case UPDATED      -> String.format("Afspraak gewijzigd naar %s", event.getAppointmentTime());
-            case CANCELLED    -> "Uw afspraak is geannuleerd.";
-            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s.", event.getAppointmentTime());
-            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur om %s.", event.getAppointmentTime());
+            case SCHEDULED    -> String.format("Afspraak bevestigd op %s%s.%s", time, loc, comments);
+            case UPDATED      -> String.format("Afspraak gewijzigd naar %s%s.%s", time, loc, comments);
+            case CANCELLED    -> String.format("Uw afspraak op %s is geannuleerd.", time);
+            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s%s.%s", time, loc, comments);
+            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur (%s)%s.%s", time, loc, comments);
         };
     }
 }

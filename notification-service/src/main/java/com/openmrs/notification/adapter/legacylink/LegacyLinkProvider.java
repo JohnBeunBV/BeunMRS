@@ -12,6 +12,8 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import com.openmrs.notification.util.MessageHelper;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.UUID;
@@ -57,6 +59,8 @@ public class LegacyLinkProvider implements NotificationProvider {
     public NotificationResult send(AppointmentEvent event) {
         try {
             String correlationId = UUID.randomUUID().toString();
+            log.debug("[LegacyLink] Sturen naar {} — appointment={}",
+                    MessageHelper.mask(event.getPatientPhone()), event.getAppointmentUuid());
             String soapBody = buildSoapEnvelope(event, correlationId);
 
             HttpHeaders headers = new HttpHeaders();
@@ -91,12 +95,15 @@ public class LegacyLinkProvider implements NotificationProvider {
         String recipient = event.getPatientPhone() != null
                 ? event.getPatientPhone()
                 : (event.getPatientEmail() != null ? event.getPatientEmail() : "unknown");
+        String time     = MessageHelper.formatTime(event.getAppointmentTime());
+        String loc      = MessageHelper.locationSuffix(event.getLocationName());
+        String comments = MessageHelper.commentsSuffix(event.getComments());
         String message = switch (event.getEventType()) {
-            case SCHEDULED    -> String.format("Afspraak bevestigd op %s", event.getAppointmentTime());
-            case UPDATED      -> String.format("Afspraak gewijzigd naar %s", event.getAppointmentTime());
-            case CANCELLED    -> "Uw afspraak is geannuleerd.";
-            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s.", event.getAppointmentTime());
-            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur om %s.", event.getAppointmentTime());
+            case SCHEDULED    -> String.format("Afspraak bevestigd op %s%s.%s", time, loc, comments);
+            case UPDATED      -> String.format("Afspraak gewijzigd naar %s%s.%s", time, loc, comments);
+            case CANCELLED    -> String.format("Uw afspraak op %s is geannuleerd.", time);
+            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s%s.%s", time, loc, comments);
+            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur (%s)%s.%s", time, loc, comments);
         };
 
         // Geen SOAP envelope — FakeComWorld verwacht plain XML met dit namespace

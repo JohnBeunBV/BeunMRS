@@ -11,7 +11,8 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.format.DateTimeFormatter;
+import com.openmrs.notification.util.MessageHelper;
+
 import java.util.Map;
 import java.util.UUID;
 
@@ -94,27 +95,21 @@ public class MockMessagingProvider implements NotificationProvider {
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private String buildMessage(AppointmentEvent event) {
-        String name = event.getPatientName() != null ? event.getPatientName() : "Patient";
-        String time = event.getAppointmentTime() != null
-                ? DateTimeFormatter.RFC_1123_DATE_TIME.format(event.getAppointmentTime().atZone(java.time.ZoneOffset.UTC))
-                : "TBD";
-
+        String name     = event.getPatientName() != null ? event.getPatientName() : "Patient";
+        String time     = MessageHelper.formatTime(event.getAppointmentTime());
+        String loc      = MessageHelper.locationSuffix(event.getLocationName());
+        String comments = MessageHelper.commentsSuffix(event.getComments());
         return switch (event.getEventType()) {
             case SCHEDULED    -> String.format(
-                    "Hi %s, your appointment with %s at %s is confirmed for %s.",
-                    name, event.getProviderName(), event.getLocationName(), time);
+                    "Hi %s, uw afspraak op %s%s is bevestigd.%s", name, time, loc, comments);
             case UPDATED      -> String.format(
-                    "Hi %s, your appointment has been rescheduled to %s.",
-                    name, time);
+                    "Hi %s, uw afspraak is gewijzigd naar %s%s.%s", name, time, loc, comments);
             case CANCELLED    -> String.format(
-                    "Hi %s, your appointment on %s has been cancelled. Please contact us to reschedule.",
-                    name, time);
+                    "Hi %s, uw afspraak op %s is geannuleerd. Neem contact op om opnieuw in te plannen.", name, time);
             case REMINDER_24H -> String.format(
-                    "Hi %s, reminder: your appointment is tomorrow at %s.",
-                    name, time);
+                    "Hi %s, herinnering: uw afspraak is morgen om %s%s.%s", name, time, loc, comments);
             case REMINDER_1H  -> String.format(
-                    "Hi %s, reminder: your appointment is in one hour at %s.",
-                    name, time);
+                    "Hi %s, herinnering: uw afspraak is over een uur (%s)%s.%s", name, time, loc, comments);
         };
     }
 
