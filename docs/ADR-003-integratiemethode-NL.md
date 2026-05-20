@@ -58,13 +58,21 @@ OpenMRS roept een webhook aan op de communicatiemodule bij iedere afspraakwijzig
 
 ### Optie 3 — Event-driven via REST + Message Queue (RabbitMQ) ✅ Gekozen
 
-De communicatiemodule poll de OpenMRS **FHIR2 REST API** (`/ws/fhir2/R4/Appointment`) periodiek en plaatst nieuwe of gewijzigde afspraken in RabbitMQ. Later (zodra de OpenMRS Event Module of een custom OMOD beschikbaar is) kan de push-kant worden toegevoegd zonder de rest van de architectuur te wijzigen.
+De communicatiemodule poll de OpenMRS **REST v1 appointment/search API** periodiek en plaatst nieuwe of gewijzigde afspraken in RabbitMQ. Later (zodra de OpenMRS Event Module of een custom OMOD beschikbaar is) kan de push-kant worden toegevoegd zonder de rest van de architectuur te wijzigen.
+
+> **⚠️ Bevinding na test (2026-05-20):** De FHIR2 module in de gebruikte OpenMRS O3 installatie ondersteunt het `Appointment` resource type **niet**. De aanroep `GET /ws/fhir2/R4/Appointment` geeft `HAPI-0302: Unknown resource type 'Appointment'`. De primaire poller is daarom omgeschreven naar `POST /ws/rest/v1/appointment/search`. FHIR2 wordt wél gebruikt voor patiëntgegevens (`/ws/fhir2/R4/Patient/{uuid}`).
 
 ```
-Pad 1 — Polling (sprint 3, nu actief):
-  [Scheduler] → GET /ws/fhir2/R4/Appointment?date=ge{watermark}
-              → filter op nieuw/gewijzigd
+Pad 1 — Polling (actief):
+  [Scheduler] → POST /ws/rest/v1/appointment/search
+                  { startDate: now, endDate: now+48h }
+              → vergelijk status met seen_appointments
               → publish AppointmentEvent → RabbitMQ
+
+Pad 1b — Reconciliatie (backup, elke 5 min):
+  [Scheduler] → GET /ws/rest/v1/appointment?lastUpdated={watermark}
+              → check notification_log op dubbelen
+              → dispatch indien gemist
 
 Pad 2 — Push (toekomstige sprint):
   OpenMRS Event Module / custom OMOD
@@ -75,14 +83,14 @@ Beide paden vullen hetzelfde RabbitMQ exchange. De rest van de module (consumers
 
 **Voordelen:**
 - Betrouwbare verwerking via queueing en retries.
-- Mist bij downtime geen events dankzij watermark-cursor (persistente voortgang in Postgres).
+- Werkt met de standaard OpenMRS O3 installatie zonder extra modules.
 - Goed schaalbaar: meerdere OpenMRS-instanties publiceren naar dezelfde queue-infrastructuur.
-- FHIR R4 Appointment resource is de standaard — compatibel met andere zorgintegraties.
 - Lage belasting op OpenMRS (poll-interval configureerbaar, standaard 2 minuten).
+- Sliding window aanpak vangt zowel nieuwe als gewijzigde afspraken op.
 
 **Nadelen:**
 - Hogere latentie dan directe push (maximaal gelijk aan het poll-interval).
-- Aanpassen van OpenMRS (custom OMOD of Event Module configureren) maakt de push-kant complexer.
+- Niet FHIR-gebaseerd voor appointments — wel voor patiëntdata.
 - Debugging is lastiger doordat communicatie asynchroon verloopt.
 
 ---

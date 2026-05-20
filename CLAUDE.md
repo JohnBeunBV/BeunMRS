@@ -48,13 +48,14 @@ BeunMRS/
 
 ## Architectuurkeuzes (al vastgesteld)
 
-### Integratiemethode — ADR-003 ✅
-**Gekozen: FHIR2 REST API + RabbitMQ (event-driven polling)**
+### Integratiemethode — ADR-003 ✅ (bijgewerkt na test)
+**Gekozen: REST v1 appointment/search + RabbitMQ (event-driven polling)**
 
-- **Primaire poller** (`OpenMrsAppointmentPoller`): elke 2 min via `GET /ws/fhir2/R4/Appointment?date=ge{watermark}`
+- **Primaire poller** (`OpenMrsAppointmentPoller`): elke 2 min via `POST /ws/rest/v1/appointment/search` met 48u sliding window
 - **Backup reconciliator** (`AppointmentReconciler`): elke 5 min via `GET /ws/rest/v1/appointment?lastUpdated={watermark}`
 - AtomFeed afgevallen: vereist volledige Bahmni-distributie, werkt niet standalone
 - Webhook (push) afgevallen: events gaan verloren bij downtime module
+- **FHIR2 Appointment afgevallen** ⚠️: getest op 2026-05-20 — de FHIR2 module in deze OpenMRS installatie ondersteunt het `Appointment` resource type niet. Ondersteunde resources: Patient, Condition, Observation, Encounter, etc. — geen Appointment. De Poller is omgeschreven naar REST v1.
 
 ### Veerkrachtmechanismen ✅
 | Mechanisme | Implementatie |
@@ -200,6 +201,7 @@ Regels 6 en 7 importeren allebei `NotificationChannel`. Compileert wel maar vero
 
 ## Bekende valkuilen
 
+- **FHIR2 Appointment niet ondersteund** — `GET /ws/fhir2/R4/Appointment` geeft `HAPI-0302: Unknown resource type 'Appointment'`. De FHIR2 module in deze OpenMRS installatie heeft geen Appointment-mapping. De Poller gebruikt daarom `POST /ws/rest/v1/appointment/search`. Gebruik voor patiënten wél FHIR2 (`/ws/fhir2/R4/Patient/{uuid}`).
 - **OpenMRS start traag** — eerste opstart duurt 5-10 minuten (Liquibase + module loading). Wacht op `Server startup in [XXXX] milliseconds` in de backend logs voordat je de UI test.
 - **Container naam `openmrs-backend`** — gewijzigd van `backend` zodat Promtail de juiste `service` label geeft in Grafana (`{service="openmrs-backend"}`).
 - **`OPENMRS_TAG` vs `OPENMRS_VERSION`** — `docker-compose.yml` gebruikt `${OPENMRS_TAG:-qa}`, maar `.env` had `OPENMRS_VERSION`. Gebruik `OPENMRS_TAG` in `.env` als je een specifieke versie wilt pinnen.
