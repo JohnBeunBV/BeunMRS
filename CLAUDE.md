@@ -235,13 +235,103 @@ docker compose up -d
 
 ---
 
-## Volgorde van aanpak (aanbevolen)
+## Voortgang — fasen & stappen
 
-1. **Fix bug #4** — MockMessagingProvider uitschakelen (5 min)
-2. **Fix bug #6** — duplicate import (1 min)
-3. **Feature #2** — patiënt contactgegevens ophalen via FHIR Patient endpoint (2-3 uur)
-4. **Feature #3** — outbox relay loop (1-2 uur)
-5. **Feature #1** — reminder scheduling 24h + 1u (4-6 uur, grootste taak)
-6. **Fix bug #5** — reconciliator EventType mapping (30 min)
-7. **Fix bug #7** — aparte RestTemplate voor providers (1 uur)
-8. **Tests schrijven** (4-8 uur afhankelijk van diepgang)
+> Vink af met `[x]` zodra een stap klaar is. Begin altijd bij de eerste onafgevinkte stap.
+
+---
+
+### 🔴 Fase 1 — Snelle bugfixes *(< 1 uur)*
+
+- [ ] **1a.** `MockMessagingProvider` uitschakelen — voeg toe aan `application.yml`:
+  ```yaml
+  mock:
+    messaging:
+      enabled: false
+  ```
+- [ ] **1b.** Duplicate import verwijderen in `SwiftSendProvider.java` (regel 6 of 7 — `NotificationChannel` staat twee keer)
+- [ ] **1c.** `AppointmentReconciler.java:136` repareren — lees `status` uit het REST-response en map naar `EventType` i.p.v. altijd `SCHEDULED`
+
+---
+
+### 🔴 Fase 2 — Patiënt contactgegevens ophalen *(2-3 uur)*
+
+- [ ] **2a.** Extra FHIR call toevoegen in `OpenMrsAppointmentPoller.toEvent()`:
+  ```
+  GET /ws/fhir2/R4/Patient/{patientUuid}
+  → lees telecom[] → system="phone" → patientPhone
+  → lees telecom[] → system="email" → patientEmail
+  ```
+- [ ] **2b.** Zelfde ophaallogica toevoegen in `AppointmentReconciler.mapToEvent()`
+- [ ] **2c.** Verifiëren: afspraak aanmaken in OpenMRS → controleer in `notification_log` dat phone/email ingevuld zijn
+
+---
+
+### 🔴 Fase 3 — Outbox relay loop *(1-2 uur)*
+
+- [ ] **3a.** Nieuwe klasse `outbox/OutboxRelayJob.java` aanmaken met `@Scheduled(fixedDelay = 30_000)`
+- [ ] **3b.** Query: `SELECT * FROM outbox_events WHERE published_at IS NULL AND failed_at IS NULL ORDER BY created_at LIMIT 20`
+- [ ] **3c.** Per rij: `rabbitTemplate.convertAndSend(exchange, routingKey, event)` → daarna `outboxService.markPublished(id)`
+- [ ] **3d.** Fout-afhandeling: `retry_count` ophogen, na 5 pogingen `failed_at` zetten
+- [ ] **3e.** Verifiëren: RabbitMQ tijdelijk stoppen → afspraak aanmaken → RabbitMQ herstart → event alsnog verwerkt
+
+---
+
+### 🔴 Fase 4 — Reminder scheduling 24h + 1u *(4-6 uur)*
+
+- [ ] **4a.** DB-migratie toevoegen aan `00_schema.sql`:
+  ```sql
+  CREATE TABLE scheduled_notifications (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    appointment_uuid TEXT NOT NULL,
+    type             TEXT NOT NULL,   -- '24h' | '1h'
+    send_at          TIMESTAMPTZ NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | cancelled
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX ON scheduled_notifications (send_at) WHERE status = 'pending';
+  ```
+- [ ] **4b.** Nieuwe klasse `scheduler/ReminderScheduler.java`:
+  - `scheduleReminders(AppointmentEvent)` → insert 2 rijen (`startTime - 24h` en `startTime - 1h`)
+  - `cancelReminders(String appointmentUuid)` → UPDATE status = 'cancelled'
+- [ ] **4c.** Nieuwe klasse `scheduler/ReminderDispatchJob.java` met `@Scheduled(fixedDelay = 60_000)`:
+  - Poll `WHERE send_at <= now() AND status = 'pending'`
+  - Haal volledige afspraakdata op uit OpenMRS (statuscheck: nog Scheduled?)
+  - Dispatch via `NotificationDispatcher` → UPDATE status = 'sent'
+- [ ] **4d.** `AppointmentEventConsumer.java` aanpassen:
+  - Bij `SCHEDULED`: `reminderScheduler.scheduleReminders(event)` + direct bevestigingsbericht
+  - Bij `CANCELLED` / `UPDATED`: `reminderScheduler.cancelReminders(event.getAppointmentUuid())`
+- [ ] **4e.** Verifiëren: afspraak aanmaken → 2 rijen in `scheduled_notifications` → wacht op `send_at` → rij op 'sent' + log aanwezig
+
+---
+
+### 🟡 Fase 5 — Aparte RestTemplate voor providers *(1 uur)*
+
+- [ ] **5a.** In `AppConfig.java`: tweede `@Bean @Qualifier("providerRestTemplate")` aanmaken zónder OpenMRS Basic Auth header
+- [ ] **5b.** Bestaande bean hernoemen naar `@Qualifier("openmrsRestTemplate")`
+- [ ] **5c.** `@Qualifier("openmrsRestTemplate")` toevoegen aan constructor van `OpenMrsAppointmentPoller` en `AppointmentReconciler`
+- [ ] **5d.** `@Qualifier("providerRestTemplate")` toevoegen aan constructors van alle 4 providers en `MockMessagingProvider`
+- [ ] **5e.** Verifiëren: FakeComWorld request logs bevatten geen `Authorization: Basic` header meer
+
+---
+
+### ⚪ Fase 6 — Tests schrijven *(4-8 uur)*
+
+- [ ] **6a.** `NotificationDispatcherTest` — mock providers, verifieer fan-out en logging in outbox
+- [ ] **6b.** `SwiftSendProviderTest` — mock RestTemplate, verifieer `X-API-KEY` header en berichtinhoud
+- [ ] **6c.** `SecurePostProviderTest` — token caching werkt, retry op 401 haalt nieuw token op
+- [ ] **6d.** `LegacyLinkProviderTest` — SOAP envelope bevat correcte velden en XML-escaping
+- [ ] **6e.** `AsyncFlowProviderTest` — command submit + status polling cyclus
+- [ ] **6f.** `AppointmentEventConsumerTest` — consumer roept dispatcher + reminderScheduler aan
+- [ ] **6g.** `OutboxServiceTest` — INSERT en markPublished correct
+- [ ] **6h.** `ReminderSchedulerTest` — `send_at` berekening klopt, annulering zet status op 'cancelled'
+
+---
+
+### ✅ Fase 7 — Eindcontrole & oplevering *(1 uur)*
+
+- [ ] **7a.** `docker compose down -v && docker compose up -d` — volledige stack van nul starten
+- [ ] **7b.** Afspraak aanmaken in OpenMRS → volledige flow volgen in Grafana logs
+- [ ] **7c.** Afspraak annuleren → verifiëren dat geplande reminders status 'cancelled' krijgen
+- [ ] **7d.** `CLAUDE.md` bijwerken — voltooide fasen markeren
+- [ ] **7e.** `README.md` controleren op actualiteit
