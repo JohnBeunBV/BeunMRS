@@ -271,10 +271,10 @@ docker compose up -d
 
 ### 🔴 Fase 3 — Outbox relay loop *(1-2 uur)*
 
-- [ ] **3a.** Nieuwe klasse `outbox/OutboxRelayJob.java` aanmaken met `@Scheduled(fixedDelay = 30_000)`
-- [ ] **3b.** Query: `SELECT * FROM outbox_events WHERE published_at IS NULL AND failed_at IS NULL ORDER BY created_at LIMIT 20`
-- [ ] **3c.** Per rij: `rabbitTemplate.convertAndSend(exchange, routingKey, event)` → daarna `outboxService.markPublished(id)`
-- [ ] **3d.** Fout-afhandeling: `retry_count` ophogen, na 5 pogingen `failed_at` zetten
+- [x] **3a.** Nieuwe klasse `outbox/OutboxRelayJob.java` aangemaakt met `@Scheduled(fixedDelay = 30_000)`
+- [x] **3b.** Query: `SELECT * FROM outbox_events WHERE published_at IS NULL AND failed_at IS NULL ORDER BY created_at LIMIT 20`
+- [x] **3c.** Per rij: `rabbitTemplate.convertAndSend(exchange, routingKey, event)` → daarna `UPDATE published_at = now()`
+- [x] **3d.** Fout-afhandeling: `retry_count` ophogen, na 5 pogingen `failed_at` zetten
 - [ ] **3e.** Verifiëren: RabbitMQ tijdelijk stoppen → afspraak aanmaken → RabbitMQ herstart → event alsnog verwerkt
 
 ---

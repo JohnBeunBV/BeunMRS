@@ -4,8 +4,8 @@
 |-------------|--------------------------|
 | Status      | Geaccepteerd             |
 | Datum       | 2025-05-13               |
+| Bijgesteld  | 2026-05-20 (na implementatietest) |
 | Beslissers  | Platformteam             |
-| Sprint      | 2–3                      |
 
 ---
 
@@ -15,18 +15,8 @@ De communicatiemodule moet afspraakgegevens ontvangen vanuit OpenMRS om patiënt
 
 - Betrouwbaar zijn bij uitval van één of meerdere services.
 - Schaalbaar zijn naar meerdere OpenMRS-instanties (multi-tenant SaaS).
-- Aansluiten op gangbare zorgstandaarden zoals **HL7 FHIR R4**.
-- Werken met de OpenMRS 3 (O3) referentiedistributie, die de **FHIR2-module** en de **webservices.rest-module** bevat.
-
-### Beschikbare integratiemechanismen in OpenMRS 3
-
-| Mechanisme | Beschrijving | Standaard |
-|---|---|---|
-| **OpenMRS REST API** | `/ws/rest/v1/appointment` — eigen OpenMRS-formaat | Nee |
-| **OpenMRS FHIR2 API** | `/ws/fhir2/R4/Appointment` — FHIR R4 resources | HL7 FHIR R4 |
-| **OpenMRS Event Module** | Publiceert intern domeingebeurtenissen via embedded ActiveMQ | Intern |
-| **AtomFeed Module** | RSS-achtige feed van wijzigingen — polling via HTTP | Nee |
-| **Custom OMOD** | Zelf een OpenMRS-module bouwen die events naar RabbitMQ stuurt | Nee |
+- Aansluiten op gangbare zorgstandaarden zoals HL7 FHIR R4 waar mogelijk.
+- Werken met de standaard OpenMRS O3 referentiedistributie.
 
 ---
 
@@ -38,135 +28,118 @@ Via welke integratiemethode ontvangt de communicatiemodule afspraakdata vanuit O
 
 ## Overwogen opties
 
-### Optie 1 — Directe REST-koppeling (OpenMRS REST API)
+### Optie 1 — Directe databasekoppeling
 
-De communicatiemodule bevraagt periodiek `/ws/rest/v1/appointment` met een datum-filter.
-
-**Voordelen:** Eenvoudig te implementeren; geen aanpassingen aan OpenMRS.  
-**Nadelen:** Eigen OpenMRS-formaat (niet FHIR); hogere belasting op OpenMRS; mist wijzigingen tijdens downtime tenzij aangevuld met watermark-logica.
-
----
-
-### Optie 2 — Directe HTTP-koppeling (push van OpenMRS naar module)
-
-OpenMRS roept een webhook aan op de communicatiemodule bij iedere afspraakwijziging.
-
-**Voordelen:** Lage latentie; eenvoudig.  
-**Nadelen:** Creëert sterke temporele en gedragsmatige koppeling — als de communicatiemodule uitvalt, gaan events verloren. OpenMRS moet het endpoint van de module kennen. Niet schaalbaar naar meerdere instanties.
-
----
-
-### Optie 3 — Event-driven via REST + Message Queue (RabbitMQ) ✅ Gekozen
-
-De communicatiemodule poll de OpenMRS **REST v1 appointment/search API** periodiek en plaatst nieuwe of gewijzigde afspraken in RabbitMQ. Later (zodra de OpenMRS Event Module of een custom OMOD beschikbaar is) kan de push-kant worden toegevoegd zonder de rest van de architectuur te wijzigen.
-
-> **⚠️ Bevinding na test (2026-05-20):** De FHIR2 module in de gebruikte OpenMRS O3 installatie ondersteunt het `Appointment` resource type **niet**. De aanroep `GET /ws/fhir2/R4/Appointment` geeft `HAPI-0302: Unknown resource type 'Appointment'`. De primaire poller is daarom omgeschreven naar `POST /ws/rest/v1/appointment/search`. FHIR2 wordt wél gebruikt voor patiëntgegevens (`/ws/fhir2/R4/Patient/{uuid}`).
-
-```
-Pad 1 — Polling (actief):
-  [Scheduler] → POST /ws/rest/v1/appointment/search
-                  { startDate: now, endDate: now+48h }
-              → vergelijk status met seen_appointments
-              → publish AppointmentEvent → RabbitMQ
-
-Pad 1b — Reconciliatie (backup, elke 5 min):
-  [Scheduler] → GET /ws/rest/v1/appointment?lastUpdated={watermark}
-              → check notification_log op dubbelen
-              → dispatch indien gemist
-
-Pad 2 — Push (toekomstige sprint):
-  OpenMRS Event Module / custom OMOD
-              → publish AppointmentEvent → RabbitMQ (zelfde exchange)
-```
-
-Beide paden vullen hetzelfde RabbitMQ exchange. De rest van de module (consumers, providers, outbox) hoeft niet te worden aangepast.
+De communicatiemodule leest afspraakgegevens rechtstreeks uit de database van OpenMRS.
 
 **Voordelen:**
-- Betrouwbare verwerking via queueing en retries.
-- Werkt met de standaard OpenMRS O3 installatie zonder extra modules.
-- Goed schaalbaar: meerdere OpenMRS-instanties publiceren naar dezelfde queue-infrastructuur.
-- Lage belasting op OpenMRS (poll-interval configureerbaar, standaard 2 minuten).
-- Sliding window aanpak vangt zowel nieuwe als gewijzigde afspraken op.
+- Eenvoudig op te zetten
+- Snelle toegang tot data zonder extra API-laag
 
 **Nadelen:**
-- Hogere latentie dan directe push (maximaal gelijk aan het poll-interval).
-- Niet FHIR-gebaseerd voor appointments — wel voor patiëntdata.
-- Debugging is lastiger doordat communicatie asynchroon verloopt.
+- Sterke afhankelijkheid van de interne databasestructuur van OpenMRS
+- Wijzigingen in het databaseschema kunnen de koppeling breken
+- Slecht schaalbaar bij meerdere OpenMRS-instanties
+- Direct database-toegang van buitenaf is een veiligheidsrisico
+- Sluit niet aan op HL7/FHIR-standaarden
+
+**Gevolgen bij downtime:**
+Geen ingebouwde bescherming — als de communicatiemodule offline is, worden wijzigingen gemist tenzij een extra watermark-mechanisme wordt gebouwd.
 
 ---
 
-### Optie 4 — AtomFeed Module
+### Optie 2 — Directe HTTP-koppeling (webhook/push van OpenMRS)
 
-De AtomFeed module genereert RSS-achtige feeds van wijzigingen. De communicatiemodule poll de feed.
+OpenMRS roept bij iedere afspraakwijziging een webhook aan op de communicatiemodule.
 
-**Voordelen:** Ingebouwd in OpenMRS; geen extra module nodig.  
-**Nadelen:** Niet op FHIR gebaseerd; minder breed ondersteund; vereist ook een watermark-mechanisme; lagere adoptie in de community vergeleken met FHIR2.
+**Voordelen:**
+- Lage latentie — directe verwerking bij elke wijziging
+
+**Nadelen:**
+- Als de communicatiemodule tijdelijk offline is, gaan events verloren
+- OpenMRS moet het adres van de communicatiemodule kennen — sterke koppeling
+- Slecht schaalbaar naar meerdere instanties zonder aparte configuratie per instantie
+
+**Gevolgen bij downtime:**
+Events gaan permanent verloren als de communicatiemodule op het moment van de webhook niet bereikbaar is.
 
 ---
 
-## Beslissing
+### Optie 3 — Event-driven via REST polling + RabbitMQ ✅ Gekozen
 
-**Gekozen: Optie 3 — Event-driven via OpenMRS REST v1 API + RabbitMQ**
+De communicatiemodule bevraagt periodiek de OpenMRS REST API en plaatst nieuwe of gewijzigde afspraken in RabbitMQ voor asynchrone verwerking.
 
-> **Bijgesteld na test (2026-05-20):** Oorspronkelijk was FHIR2 gepland als primaire API. Na praktijktest bleek dat de FHIR2-module in de gebruikte OpenMRS O3-distributie het `Appointment` resource type niet ondersteunt (`HAPI-0302: Unknown resource type 'Appointment'`). De FHIR2 Patient resource werkt wél, maar geeft geen extra voordeel boven REST v1 — contactgegevens (`telecom[]`) zijn leeg als ze niet in OpenMRS zijn opgeslagen, ongeacht welke API je gebruikt. De volledige integratie gebruikt daarom consistent **REST v1**.
-
-### Implementatie
-
-De `OpenMrsAppointmentPoller` bevraagt de REST v1 appointment/search endpoint:
-
+**Werking:**
 ```
-POST /ws/rest/v1/appointment/search
-{ "startDate": "<now>", "endDate": "<now + 48h>" }
-Authorization: Basic {admin credentials}
+[Scheduler] → POST /ws/rest/v1/appointment/search
+               { startDate: now, endDate: now + 48h }
+           → vergelijk status met seen_appointments tabel
+           → nieuw of gewijzigd: sla op in outbox_events
+           → publiceer AppointmentEvent naar RabbitMQ exchange
+           → consumer verwerkt bericht en verstuurt notificatie
 ```
 
-De `AppointmentReconciler` (backup) bevraagt:
-```
-GET /ws/rest/v1/appointment?lastUpdated={watermark}&v=full
-```
+**Voordelen:**
+- Betrouwbare verwerking via queueing en retries
+- Werkt zonder aanpassingen aan OpenMRS
+- Goed schaalbaar: meerdere OpenMRS-instanties kunnen naar dezelfde queue-infrastructuur worden gekoppeld
+- Lage belasting op OpenMRS (poll-interval configureerbaar, standaard 2 minuten)
+- Sliding window vangt zowel nieuwe als gewijzigde afspraken op
 
-Veerkrachtmechanismen in de poller:
-| Mechanisme | Implementatie |
-|---|---|
-| **Sliding window** | Poll de komende 48 uur — vangt zowel nieuwe als gewijzigde afspraken op. |
-| **Status-change detectie** | Vergelijkt huidige status met `seen_appointments` tabel. Alleen bij wijziging wordt een event gepubliceerd. |
-| **Circuit breaker** | Na 5 opeenvolgende fouten pauzeert de poller 2 minuten. Herstelt automatisch. |
-| **Duplicate guard** | `seen_appointments` tabel voorkomt dubbele notificaties bij overlappende poll-vensters. |
-| **Persist-before-publish** | Afspraken worden eerst opgeslagen in `outbox_events`, daarna pas gepubliceerd naar RabbitMQ. |
+**Nadelen:**
+- Hogere latentie dan directe push (maximaal gelijk aan het poll-interval van 2 minuten)
+- Debugging is lastiger doordat communicatie asynchroon verloopt
 
-### FHIR — bewuste keuze om te skippen
-
-| Resource | FHIR2 | REST v1 | Gekozen |
-|---|---|---|---|
-| Appointment ophalen | ❌ niet ondersteund | ✅ werkt | REST v1 |
-| Patiënt contactgegevens | ✅ werkt (telecom[]) | ✅ werkt (person/attributes) | REST v1 |
-
-FHIR2 wordt volledig vermeden omdat:
-1. Appointment (kern van het systeem) wordt niet ondersteund.
-2. Patient via REST v1 geeft dezelfde data — consistent één API is eenvoudiger.
-3. De FHIR-module-installatiestatus verschilt per OpenMRS-instantie; REST v1 is altijd aanwezig.
-
-Het interne `AppointmentEvent` model is bewust provider-agnostisch — als een toekomstige installatie wél FHIR2 Appointment ondersteunt, kan de Poller worden uitgewisseld zonder wijzigingen aan consumers, providers of outbox.
-
-### Schaalbaarheid
-
-Meerdere OpenMRS-instanties kunnen naar hetzelfde RabbitMQ exchange publiceren (zowel via polling als via een toekomstige push-integratie). De communicatiemodule consumeert van de queues ongeacht de bron, wat multi-tenant SaaS-scenario's ondersteunt.
-
-### Gevolgen bij downtime
+**Gevolgen bij downtime:**
 
 | Scenario | Gedrag |
 |---|---|
-| **Communicatiemodule tijdelijk down** | RabbitMQ bewaart berichten in duurzame queues. Na herstart worden ze verwerkt. |
-| **OpenMRS tijdelijk down** | Poller logt fout, activeert circuit breaker, watermark wordt niet vooruitgezet. Na herstel haalt de poller de gemiste periode op via de watermark. |
-| **RabbitMQ tijdelijk down** | Outbox in Postgres behoudt de data. Relay-loop publiceert zodra de broker bereikbaar is. |
+| Communicatiemodule tijdelijk down | RabbitMQ bewaart berichten in duurzame queues; verwerking hervat na herstart |
+| OpenMRS tijdelijk down | Poller logt fout, circuit breaker pauzeert na 5 pogingen; na herstel haalt de poller de gemiste periode op via de watermark |
+| RabbitMQ tijdelijk down | Outbox-tabel in Postgres behoudt de data; relay-job publiceert zodra de broker bereikbaar is |
+
+**Schaalbaarheid:**
+Meerdere OpenMRS-instanties kunnen worden gekoppeld door voor elke instantie een eigen poller-configuratie te gebruiken. Alle pollers publiceren naar dezelfde RabbitMQ exchange. De consumers verwerken berichten ongeacht de bron, wat multi-tenant SaaS-scenario's ondersteunt.
+
+---
+
+## Definitieve keuze
+
+**Gekozen: Optie 3 — Event-driven via OpenMRS REST v1 API + RabbitMQ**
+
+Polling via de REST API is gekozen boven directe databasekoppeling en webhook-push vanwege de betere betrouwbaarheid bij downtime en de betere schaalbaarheid naar meerdere instanties. Het gebruik van RabbitMQ zorgt voor at-least-once delivery via de outbox-tabel in combinatie met duurzame queues.
+
+### Noot over FHIR/HL7
+
+Oorspronkelijk was de FHIR2 Appointment API (`/ws/fhir2/R4/Appointment`) gepland als primaire integratie, omdat dit aansluit op de HL7 FHIR R4-standaard. Tijdens implementatie bleek echter dat de FHIR2 module in de gebruikte OpenMRS O3 distributie het `Appointment` resource type niet ondersteunt:
+
+```json
+{
+  "issue": [{
+    "severity": "error",
+    "diagnostics": "HAPI-0302: Unknown resource type 'Appointment'"
+  }]
+}
+```
+
+De integratie maakt daarom gebruik van de OpenMRS REST v1 API (`POST /ws/rest/v1/appointment/search`). Het interne `AppointmentEvent`-model is bewust provider-agnostisch opgezet: als een toekomstige OpenMRS-installatie wel FHIR2 Appointment ondersteunt, kan de poller worden uitgewisseld zonder wijzigingen aan de rest van de module.
+
+### Veerkrachtmechanismen in de implementatie
+
+| Mechanisme | Implementatie |
+|---|---|
+| Sliding window | Poll de komende 48 uur — vangt zowel nieuwe als gewijzigde afspraken op |
+| Status-change detectie | Vergelijkt huidige status met `seen_appointments` tabel; event alleen bij wijziging |
+| Circuit breaker | Na 5 opeenvolgende fouten pauzeert de poller 2 minuten; herstelt automatisch |
+| Persist-before-publish | Afspraken eerst opgeslagen in `outbox_events`, dan pas gepubliceerd naar RabbitMQ |
+| Backup reconciliator | Elke 5 minuten via `GET /ws/rest/v1/appointment?lastUpdated={watermark}` als extra vangnet |
 
 ---
 
 ## Referenties
 
+- [OpenMRS REST v1 Appointment API](https://wiki.openmrs.org/display/docs/Appointment+Scheduling+Module)
 - [OpenMRS FHIR2 Module](https://github.com/openmrs/openmrs-module-fhir2)
 - [HL7 FHIR R4 Appointment Resource](https://www.hl7.org/fhir/appointment.html)
-- [OpenMRS Event Module (ActiveMQ)](https://wiki.openmrs.org/display/docs/Event+Module)
-- [OpenMRS O3 Reference Application](https://github.com/openmrs/openmrs-distro-referenceapplication)
-- `notification-service/.../poller/OpenMrsAppointmentPoller.java` — implementatie
-- ADR-004 — RabbitMQ queue-infrastructuur
+- `notification-service/.../poller/OpenMrsAppointmentPoller.java` — implementatie poller
+- `notification-service/.../reconciler/AppointmentReconciler.java` — implementatie reconciliator
