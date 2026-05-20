@@ -99,14 +99,20 @@ public class MockMessagingProvider implements NotificationProvider {
                 : "TBD";
 
         return switch (event.getEventType()) {
-            case SCHEDULED -> String.format(
+            case SCHEDULED    -> String.format(
                     "Hi %s, your appointment with %s at %s is confirmed for %s.",
                     name, event.getProviderName(), event.getLocationName(), time);
-            case UPDATED -> String.format(
+            case UPDATED      -> String.format(
                     "Hi %s, your appointment has been rescheduled to %s.",
                     name, time);
-            case CANCELLED -> String.format(
+            case CANCELLED    -> String.format(
                     "Hi %s, your appointment on %s has been cancelled. Please contact us to reschedule.",
+                    name, time);
+            case REMINDER_24H -> String.format(
+                    "Hi %s, reminder: your appointment is tomorrow at %s.",
+                    name, time);
+            case REMINDER_1H  -> String.format(
+                    "Hi %s, reminder: your appointment is in one hour at %s.",
                     name, time);
         };
     }

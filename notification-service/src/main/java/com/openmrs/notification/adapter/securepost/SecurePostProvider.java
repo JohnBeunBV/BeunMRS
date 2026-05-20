@@ -157,17 +157,21 @@ public class SecurePostProvider implements NotificationProvider {
 
     private String subjectFor(AppointmentEvent event) {
         return switch (event.getEventType()) {
-            case SCHEDULED -> "Afspraakbevestiging";
-            case UPDATED   -> "Afspraak gewijzigd";
-            case CANCELLED -> "Afspraak geannuleerd";
+            case SCHEDULED    -> "Afspraakbevestiging";
+            case UPDATED      -> "Afspraak gewijzigd";
+            case CANCELLED    -> "Afspraak geannuleerd";
+            case REMINDER_24H -> "Herinnering: afspraak morgen";
+            case REMINDER_1H  -> "Herinnering: afspraak over een uur";
         };
     }
 
     private String buildMessage(AppointmentEvent event) {
         return switch (event.getEventType()) {
-            case SCHEDULED -> String.format("Uw afspraak op %s is bevestigd.", event.getAppointmentTime());
-            case UPDATED   -> String.format("Uw afspraak is gewijzigd naar %s.", event.getAppointmentTime());
-            case CANCELLED -> "Uw afspraak is geannuleerd. Neem contact op om opnieuw in te plannen.";
+            case SCHEDULED    -> String.format("Uw afspraak op %s is bevestigd.", event.getAppointmentTime());
+            case UPDATED      -> String.format("Uw afspraak is gewijzigd naar %s.", event.getAppointmentTime());
+            case CANCELLED    -> "Uw afspraak is geannuleerd. Neem contact op om opnieuw in te plannen.";
+            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s.", event.getAppointmentTime());
+            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur om %s.", event.getAppointmentTime());
         };
     }
 }

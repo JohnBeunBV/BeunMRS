@@ -65,3 +65,26 @@ CREATE TABLE IF NOT EXISTS async_flow_commands (
 CREATE INDEX IF NOT EXISTS idx_asyncflow_pending
     ON async_flow_commands (submitted_at)
     WHERE status = 'pending';
+
+-- ── Scheduled reminders (24h + 1h before appointment) ────────────────────────
+-- One row per reminder. payload JSONB stores the full AppointmentEvent snapshot
+-- so the dispatch job can send without an extra OpenMRS call.
+-- status: pending | sent | cancelled | failed
+CREATE TABLE IF NOT EXISTS scheduled_notifications (
+    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    appointment_uuid TEXT        NOT NULL,
+    type             TEXT        NOT NULL,       -- '24h' | '1h'
+    send_at          TIMESTAMPTZ NOT NULL,
+    status           TEXT        NOT NULL DEFAULT 'pending',
+    payload          JSONB       NOT NULL,
+    sent_at          TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Prevent duplicate pending reminders for the same appointment+type
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sched_notif_pending_unique
+    ON scheduled_notifications (appointment_uuid, type)
+    WHERE status = 'pending';
+-- Fast lookup for the dispatch job
+CREATE INDEX IF NOT EXISTS idx_sched_notif_send_at
+    ON scheduled_notifications (send_at)
+    WHERE status = 'pending';

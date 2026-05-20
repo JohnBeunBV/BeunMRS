@@ -279,31 +279,14 @@ docker compose up -d
 
 ---
 
-### 🔴 Fase 4 — Reminder scheduling 24h + 1u *(4-6 uur)*
+### ✅ Fase 4 — Reminder scheduling 24h + 1u *(4-6 uur)*
 
-- [ ] **4a.** DB-migratie toevoegen aan `00_schema.sql`:
-  ```sql
-  CREATE TABLE scheduled_notifications (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    appointment_uuid TEXT NOT NULL,
-    type             TEXT NOT NULL,   -- '24h' | '1h'
-    send_at          TIMESTAMPTZ NOT NULL,
-    status           TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | cancelled
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-  CREATE INDEX ON scheduled_notifications (send_at) WHERE status = 'pending';
-  ```
-- [ ] **4b.** Nieuwe klasse `scheduler/ReminderScheduler.java`:
-  - `scheduleReminders(AppointmentEvent)` → insert 2 rijen (`startTime - 24h` en `startTime - 1h`)
-  - `cancelReminders(String appointmentUuid)` → UPDATE status = 'cancelled'
-- [ ] **4c.** Nieuwe klasse `scheduler/ReminderDispatchJob.java` met `@Scheduled(fixedDelay = 60_000)`:
-  - Poll `WHERE send_at <= now() AND status = 'pending'`
-  - Haal volledige afspraakdata op uit OpenMRS (statuscheck: nog Scheduled?)
-  - Dispatch via `NotificationDispatcher` → UPDATE status = 'sent'
-- [ ] **4d.** `AppointmentEventConsumer.java` aanpassen:
-  - Bij `SCHEDULED`: `reminderScheduler.scheduleReminders(event)` + direct bevestigingsbericht
-  - Bij `CANCELLED` / `UPDATED`: `reminderScheduler.cancelReminders(event.getAppointmentUuid())`
-- [ ] **4e.** Verifiëren: afspraak aanmaken → 2 rijen in `scheduled_notifications` → wacht op `send_at` → rij op 'sent' + log aanwezig
+- [x] **4a.** `scheduled_notifications` tabel toegevoegd aan `00_schema.sql` — slaat payload op als JSONB zodat dispatch job geen extra OpenMRS call nodig heeft
+- [x] **4b.** `scheduler/ReminderScheduler.java` aangemaakt — `scheduleReminders()` insert 2 rijen (24h + 1h voor afspaaak), `cancelReminders()` zet status op 'cancelled'
+- [x] **4c.** `scheduler/ReminderDispatchJob.java` aangemaakt — `@Scheduled(fixedDelay=60s)`, poll pending reminders, override eventType naar `REMINDER_24H`/`REMINDER_1H`, dispatch via NotificationDispatcher
+- [x] **4d.** `AppointmentEventConsumer.java` bijgewerkt — injecteert ReminderScheduler; SCHEDULED: dispatch + schedule; UPDATED: dispatch + cancel + reschedule; CANCELLED: dispatch + cancel
+- [x] **4e.** Twee nieuwe `EventType` waarden (`REMINDER_24H`, `REMINDER_1H`) toegevoegd; alle 4 providers + MockMessagingProvider bijgewerkt met reminder berichttekst
+- [x] **4f.** Geverifieerd: reminders werden aangemaakt, dispatched naar alle 4 providers, `status = 'sent'` in DB, 8 entries in `notification_log`
 
 ---
 

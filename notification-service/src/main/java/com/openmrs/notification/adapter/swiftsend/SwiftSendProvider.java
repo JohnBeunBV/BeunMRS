@@ -82,9 +82,11 @@ public class SwiftSendProvider implements NotificationProvider {
 
     private String buildMessage(AppointmentEvent event) {
         return switch (event.getEventType()) {
-            case SCHEDULED -> String.format("Uw afspraak op %s is bevestigd.", event.getAppointmentTime());
-            case UPDATED   -> String.format("Uw afspraak is gewijzigd naar %s.", event.getAppointmentTime());
-            case CANCELLED -> "Uw afspraak is geannuleerd. Neem contact op om opnieuw in te plannen.";
+            case SCHEDULED    -> String.format("Uw afspraak op %s is bevestigd.", event.getAppointmentTime());
+            case UPDATED      -> String.format("Uw afspraak is gewijzigd naar %s.", event.getAppointmentTime());
+            case CANCELLED    -> "Uw afspraak is geannuleerd. Neem contact op om opnieuw in te plannen.";
+            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s.", event.getAppointmentTime());
+            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur om %s.", event.getAppointmentTime());
         };
     }
 }

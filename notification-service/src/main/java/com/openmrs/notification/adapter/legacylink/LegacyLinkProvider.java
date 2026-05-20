@@ -91,9 +91,11 @@ public class LegacyLinkProvider implements NotificationProvider {
                 ? event.getPatientPhone()
                 : (event.getPatientEmail() != null ? event.getPatientEmail() : "unknown");
         String message = switch (event.getEventType()) {
-            case SCHEDULED -> String.format("Afspraak bevestigd op %s", event.getAppointmentTime());
-            case UPDATED   -> String.format("Afspraak gewijzigd naar %s", event.getAppointmentTime());
-            case CANCELLED -> "Uw afspraak is geannuleerd.";
+            case SCHEDULED    -> String.format("Afspraak bevestigd op %s", event.getAppointmentTime());
+            case UPDATED      -> String.format("Afspraak gewijzigd naar %s", event.getAppointmentTime());
+            case CANCELLED    -> "Uw afspraak is geannuleerd.";
+            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s.", event.getAppointmentTime());
+            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur om %s.", event.getAppointmentTime());
         };
 
         // Geen SOAP envelope — FakeComWorld verwacht plain XML met dit namespace

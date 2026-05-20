@@ -12,7 +12,13 @@ import java.time.Instant;
 public class AppointmentEvent {
 
     public enum EventType {
-        SCHEDULED, UPDATED, CANCELLED
+        SCHEDULED,
+        UPDATED,
+        CANCELLED,
+        /** Reminder sent 24 hours before the appointment */
+        REMINDER_24H,
+        /** Reminder sent 1 hour before the appointment */
+        REMINDER_1H
     }
 
     private String appointmentUuid;
