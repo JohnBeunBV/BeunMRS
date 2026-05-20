@@ -152,6 +152,10 @@ public class OpenMrsAppointmentPoller {
                     continue;
                 }
 
+                // Enrich comments — the search endpoint always returns null for comments,
+                // but GET ?uuid={uuid} returns the full record including comments.
+                enrichComments(apt);
+
                 AppointmentEvent event = toEvent(apt, seenStatus);
                 outboxService.writePending(event);
                 markSeen(apt.getUuid(), currentStatus);
@@ -171,6 +175,34 @@ public class OpenMrsAppointmentPoller {
         }
 
         log.info("Poll complete — queued {}/{} appointments", queued, appointments.size());
+    }
+
+    // ── Comments enrichment ──────────────────────────────────────────────────
+
+    /**
+     * The POST /appointment/search endpoint always returns comments=null.
+     * GET /appointment?uuid={uuid} returns the full record including comments.
+     * We call this only for new/changed appointments to limit API overhead.
+     */
+    @SuppressWarnings("rawtypes")
+    private void enrichComments(RestAppointment apt) {
+        if (apt.getUuid() == null) return;
+        try {
+            String url = openmrsBaseUrl + "/ws/rest/v1/appointment?uuid=" + apt.getUuid();
+            ResponseEntity<Map> resp = restTemplate.getForEntity(url, Map.class);
+            if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+                Object comments = resp.getBody().get("comments");
+                if (comments instanceof String s && !s.isBlank()) {
+                    apt.setComments(s);
+                    log.debug("[Comments] Enriched — uuid={}", apt.getUuid());
+                }
+            } else {
+                log.warn("[Comments] Unexpected response HTTP {} for uuid={}",
+                        resp.getStatusCode(), apt.getUuid());
+            }
+        } catch (Exception ex) {
+            log.warn("[Comments] Could not fetch for uuid={}: {}", apt.getUuid(), ex.getMessage());
+        }
     }
 
     // ── OpenMRS REST v1 appointment/search ───────────────────────────────────
@@ -248,6 +280,7 @@ public class OpenMrsAppointmentPoller {
         event.setPatientName(apt.getPatientName());
         event.setLocationName(apt.getLocationName());
         event.setAppointmentTime(apt.getStartDateTime());
+        event.setComments(apt.getComments());
         event.setOccurredAt(Instant.now());
         event.setEventType(statusToEventType(apt.getStatus(), previousStatus));
 
