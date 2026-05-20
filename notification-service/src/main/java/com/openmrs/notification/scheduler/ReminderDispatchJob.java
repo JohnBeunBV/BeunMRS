@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -108,6 +109,20 @@ public class ReminderDispatchJob {
                     ? AppointmentEvent.EventType.REMINDER_24H
                     : AppointmentEvent.EventType.REMINDER_1H;
             event.setEventType(reminderType);
+
+            // ── Stap 2b+: Sla over als de afspraak al voorbij is ───────────
+            // Dit kan gebeuren als de service langere tijd offline was.
+            if (event.getAppointmentTime() != null
+                    && event.getAppointmentTime().isBefore(Instant.now())) {
+                log.info("[Reminder] Afspraak al voorbij — reminder overgeslagen. type={} appointment={}",
+                        type, appointmentUuid);
+                jdbc.update("""
+                    UPDATE scheduled_notifications
+                       SET status = 'skipped', sent_at = now()
+                     WHERE id = ?::uuid
+                    """, id);
+                return true;
+            }
 
             // ── Stap 2c: Dispatch naar alle providers ───────────────────────
             dispatcher.dispatch(event);
