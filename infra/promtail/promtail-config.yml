@@ -27,14 +27,17 @@ scrape_configs:
       - source_labels: [__meta_docker_container_image]
         target_label: image
     pipeline_stages:
-      # Parse JSON log lines from Spring Boot (logback structured output)
+      # Try to parse JSON log lines (Spring Boot / logback-json).
+      # OpenMRS logs are plain-text — json stage fails silently and the
+      # original line is kept, so both formats work without an output stage.
       - json:
           expressions:
             level:   level
             logger:  logger
             message: message
+      # Only promote labels when they were actually extracted (non-empty)
       - labels:
           level:
           logger:
-      - output:
-          source: message
+      # NOTE: no `output` stage here — that would overwrite plain-text lines
+      # (e.g. OpenMRS / Tomcat) with an empty string and make them invisible.
