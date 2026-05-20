@@ -7,6 +7,7 @@ import com.openmrs.notification.service.PersonContactService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -80,7 +81,7 @@ public class OpenMrsAppointmentPoller {
     private long circuitOpenedAt     = 0;
 
     public OpenMrsAppointmentPoller(
-            RestTemplate restTemplate,
+            @Qualifier("openmrsRestTemplate") RestTemplate restTemplate,
             RabbitTemplate rabbitTemplate,
             JdbcTemplate jdbc,
             OutboxService outboxService,

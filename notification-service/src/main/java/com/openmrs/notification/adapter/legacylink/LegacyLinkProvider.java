@@ -6,6 +6,7 @@ import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -37,7 +38,7 @@ public class LegacyLinkProvider implements NotificationProvider {
     private final String studentGroup;
 
     public LegacyLinkProvider(
-            RestTemplate restTemplate,
+            @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
             @Value("${provider.legacylink.username:legacylink-user}") String username,
             @Value("${provider.legacylink.password:legacylink-password}") String password,

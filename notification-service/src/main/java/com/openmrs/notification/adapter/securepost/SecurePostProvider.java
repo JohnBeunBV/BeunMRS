@@ -6,6 +6,7 @@ import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -39,7 +40,7 @@ public class SecurePostProvider implements NotificationProvider {
     private volatile Instant tokenExpiresAt = Instant.EPOCH;
 
     public SecurePostProvider(
-            RestTemplate restTemplate,
+            @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
             @Value("${provider.securepost.client-id:securepost-client-id}") String clientId,
             @Value("${provider.securepost.client-secret:securepost-secret-key}") String clientSecret,

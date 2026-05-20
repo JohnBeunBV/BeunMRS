@@ -5,6 +5,7 @@ import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -33,7 +34,7 @@ public class MockMessagingProvider implements NotificationProvider {
     private final boolean enabled;
 
     public MockMessagingProvider(
-            RestTemplate restTemplate,
+            @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${mock.messaging.base-url:http://mock-messaging:8025}") String mockBaseUrl,
             @Value("${mock.messaging.enabled:true}") boolean enabled) {
         this.restTemplate = restTemplate;

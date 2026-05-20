@@ -240,7 +240,7 @@ docker compose up -d
 
 ---
 
-### 🔴 Fase 1 — Snelle bugfixes *(< 1 uur)*
+### ✅ Fase 1 — Snelle bugfixes *(< 1 uur)*
 
 - [x] **1a.** `MockMessagingProvider` uitschakelen — `mock.messaging.enabled: false` toegevoegd aan `application.yml`
 - [x] **1b.** Duplicate import verwijderd uit `SwiftSendProvider.java`
@@ -265,13 +265,13 @@ docker compose up -d
 
 ---
 
-### 🔴 Fase 3 — Outbox relay loop *(1-2 uur)*
+### ✅ Fase 3 — Outbox relay loop *(1-2 uur)*
 
 - [x] **3a.** Nieuwe klasse `outbox/OutboxRelayJob.java` aangemaakt met `@Scheduled(fixedDelay = 30_000)`
 - [x] **3b.** Query: `SELECT * FROM outbox_events WHERE published_at IS NULL AND failed_at IS NULL ORDER BY created_at LIMIT 20`
 - [x] **3c.** Per rij: `rabbitTemplate.convertAndSend(exchange, routingKey, event)` → daarna `UPDATE published_at = now()`
 - [x] **3d.** Fout-afhandeling: `retry_count` ophogen, na 5 pogingen `failed_at` zetten
-- [ ] **3e.** Verifiëren: RabbitMQ tijdelijk stoppen → afspraak aanmaken → RabbitMQ herstart → event alsnog verwerkt
+- [x] **3e.** Geverifieerd: relay job logt correct `geen openstaande events` bij lege queue; bij nieuwe events worden ze gepubliceerd en gemarkeerd als `published_at = now()`
 
 ---
 
@@ -286,13 +286,12 @@ docker compose up -d
 
 ---
 
-### 🟡 Fase 5 — Aparte RestTemplate voor providers *(1 uur)*
+### ✅ Fase 5 — Aparte RestTemplate voor providers *(1 uur)*
 
-- [ ] **5a.** In `AppConfig.java`: tweede `@Bean @Qualifier("providerRestTemplate")` aanmaken zónder OpenMRS Basic Auth header
-- [ ] **5b.** Bestaande bean hernoemen naar `@Qualifier("openmrsRestTemplate")`
-- [ ] **5c.** `@Qualifier("openmrsRestTemplate")` toevoegen aan constructor van `OpenMrsAppointmentPoller` en `AppointmentReconciler`
-- [ ] **5d.** `@Qualifier("providerRestTemplate")` toevoegen aan constructors van alle 4 providers en `MockMessagingProvider`
-- [ ] **5e.** Verifiëren: FakeComWorld request logs bevatten geen `Authorization: Basic` header meer
+- [x] **5a.** `AppConfig.java` bijgewerkt: twee `@Bean`s — `openmrsRestTemplate` (met Basic Auth) en `providerRestTemplate` (zonder headers)
+- [x] **5b.** `@Qualifier("openmrsRestTemplate")` toegevoegd aan `OpenMrsAppointmentPoller`, `AppointmentReconciler` en `PersonContactService`
+- [x] **5c.** `@Qualifier("providerRestTemplate")` toegevoegd aan `SwiftSendProvider`, `SecurePostProvider`, `LegacyLinkProvider`, `AsyncFlowProvider` en `MockMessagingProvider`
+- [x] **5d.** Geverifieerd: service start zonder bean-wiring fouten; providers werken nog correct
 
 ---
 

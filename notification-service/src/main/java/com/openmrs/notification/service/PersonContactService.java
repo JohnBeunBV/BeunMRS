@@ -3,6 +3,7 @@ package com.openmrs.notification.service;
 import com.openmrs.notification.model.AppointmentEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -49,7 +50,7 @@ public class PersonContactService {
     private final Map<String, PersonContacts> cache = new ConcurrentHashMap<>();
 
     public PersonContactService(
-            RestTemplate restTemplate,
+            @Qualifier("openmrsRestTemplate") RestTemplate restTemplate,
             @Value("${openmrs.base-url:http://gateway/openmrs}") String openmrsBaseUrl) {
         this.restTemplate   = restTemplate;
         this.openmrsBaseUrl = openmrsBaseUrl;

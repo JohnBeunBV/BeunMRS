@@ -6,6 +6,7 @@ import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -29,7 +30,7 @@ public class SwiftSendProvider implements NotificationProvider {
     private final String studentGroup;
 
     public SwiftSendProvider(
-            RestTemplate restTemplate,
+            @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
             @Value("${provider.swiftsend.api-key:your-api-key-here}") String apiKey,
             @Value("${fakecomworld.student-group:group-1}") String studentGroup) {

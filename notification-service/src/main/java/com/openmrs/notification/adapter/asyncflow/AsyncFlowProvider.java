@@ -6,6 +6,7 @@ import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -40,7 +41,7 @@ public class AsyncFlowProvider implements NotificationProvider {
     private final String studentGroup;
 
     public AsyncFlowProvider(
-            RestTemplate restTemplate,
+            @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             JdbcTemplate jdbc,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
             @Value("${provider.asyncflow.api-key:asyncflow-api-key}") String apiKey,
