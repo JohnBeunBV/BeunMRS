@@ -2,6 +2,7 @@ package com.openmrs.notification.reconciler;
 
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.service.NotificationDispatcher;
+import com.openmrs.notification.service.PersonContactService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,26 +36,23 @@ public class AppointmentReconciler {
     private static final Logger log = LoggerFactory.getLogger(AppointmentReconciler.class);
     private static final String RESOURCE = "appointment";
 
-    private final RestTemplate restTemplate;
-    private final JdbcTemplate jdbc;
+    private final RestTemplate         restTemplate;
+    private final JdbcTemplate         jdbc;
     private final NotificationDispatcher dispatcher;
-    private final String openmrsBaseUrl;
-    private final String openmrsUser;
-    private final String openmrsPassword;
+    private final PersonContactService personContactService;
+    private final String               openmrsBaseUrl;
 
     public AppointmentReconciler(
             RestTemplate restTemplate,
             JdbcTemplate jdbc,
             NotificationDispatcher dispatcher,
-            @Value("${openmrs.base-url:http://openmrs:8080/openmrs}") String openmrsBaseUrl,
-            @Value("${openmrs.api.username:admin}") String openmrsUser,
-            @Value("${openmrs.api.password:Admin1234}") String openmrsPassword) {
-        this.restTemplate   = restTemplate;
-        this.jdbc           = jdbc;
-        this.dispatcher     = dispatcher;
-        this.openmrsBaseUrl = openmrsBaseUrl;
-        this.openmrsUser    = openmrsUser;
-        this.openmrsPassword = openmrsPassword;
+            PersonContactService personContactService,
+            @Value("${openmrs.base-url:http://gateway/openmrs}") String openmrsBaseUrl) {
+        this.restTemplate         = restTemplate;
+        this.jdbc                 = jdbc;
+        this.dispatcher           = dispatcher;
+        this.personContactService = personContactService;
+        this.openmrsBaseUrl       = openmrsBaseUrl;
     }
 
     /**
@@ -107,7 +105,7 @@ public class AppointmentReconciler {
             """, RESOURCE, now.toString());
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private List<AppointmentEvent> fetchFromOpenMRS(Instant since) {
         // OpenMRS REST v1 — Appointment Scheduling module endpoint
         String url = openmrsBaseUrl + "/ws/rest/v1/appointment?lastUpdated=" + since.toString() + "&v=full";
@@ -156,6 +154,9 @@ public class AppointmentReconciler {
         if (location != null) {
             e.setLocationName((String) location.get("name"));
         }
+
+        // Fase 2: contactgegevens ophalen via GET /ws/rest/v1/person/{uuid}?v=full
+        personContactService.enrichEvent(e);
 
         return e;
     }

@@ -249,23 +249,19 @@ docker compose up -d
 
 ---
 
-### 🔴 Fase 2 — Patiënt contactgegevens ophalen *(2-3 uur)*
+### ✅ Fase 2 — Patiënt contactgegevens ophalen *(2-3 uur)*
 
-> FHIR2 volledig geskipt (zie ADR-003). FHIR2 Appointment werkt niet; FHIR2 Patient werkt wel maar geeft geen voordeel boven REST v1. Alle integratie via REST v1.
+> FHIR2 volledig geskipt (zie ADR-003). Alle integratie via REST v1.
 
-- [ ] **2a.** Extra REST v1 call toevoegen in `OpenMrsAppointmentPoller.toEvent()`:
-  ```
-  GET /ws/rest/v1/person/{patientUuid}?v=full
-  → lees attributes[] → zoek op attributeType.display = "Phone Number" → patientPhone
-  → lees attributes[] → zoek op attributeType.display = "Email" → patientEmail
-  ```
-- [ ] **2b.** Zelfde ophaallogica toevoegen in `AppointmentReconciler.mapToEvent()`
-- [ ] **2c.** Eerst testen welke person attributes beschikbaar zijn:
-  ```
-  GET http://localhost/openmrs/ws/rest/v1/personattributetype?v=default
-  ```
-  Gebruik de exacte `display` namen uit die response.
-- [ ] **2d.** Verifiëren: patiënt aanmaken mét phone/email → afspraak aanmaken → controleer in `notification_log` dat phone/email ingevuld zijn
+**Attribuutnamen geverifieerd via `GET /ws/rest/v1/personattributetype`:**
+- Telefoon → `"Telephone Number"`
+- Email → `"email"` (lowercase)
+
+- [x] **2a.** `service/PersonContactService.java` aangemaakt — `GET /ws/rest/v1/person/{uuid}?v=full`, leest `attributes[]`, zoekt op `attributeType.display`. Bevat in-memory cache (max 500 entries) om herhaalde calls binnen één poll-cyclus te vermijden.
+- [x] **2b.** `OpenMrsAppointmentPoller.toEvent()` → `personContactService.enrichEvent(event)`
+- [x] **2c.** `AppointmentReconciler.mapToEvent()` → `personContactService.enrichEvent(event)`. Ook `openmrsUser`/`openmrsPassword` velden verwijderd (zaten al in RestTemplate via AppConfig).
+- [x] **2d.** `OutboxService.buildPayloadJson()` bijgewerkt met `patientPhone` en `patientEmail`.
+- [x] **2e.** Geverifieerd: Betty Williams (uuid=4df50238) — attributen via API toegevoegd → `notification_log` bevat `phone=+31612345678` en `email=betty.williams@example.com` voor alle 4 providers.
 
 ---
 

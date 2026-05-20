@@ -85,10 +85,13 @@ public class OutboxService {
     private String buildPayloadJson(AppointmentEvent event, NotificationResult result) {
         // Simple JSON construction without pulling in a full serializer dependency here
         return String.format(
-            "{\"appointmentUuid\":\"%s\",\"patientUuid\":\"%s\",\"eventType\":\"%s\",\"providerMsgId\":\"%s\"}",
+            "{\"appointmentUuid\":\"%s\",\"patientUuid\":\"%s\",\"eventType\":\"%s\"" +
+            ",\"patientPhone\":\"%s\",\"patientEmail\":\"%s\",\"providerMsgId\":\"%s\"}",
             nvl(event.getAppointmentUuid()),
             nvl(event.getPatientUuid()),
             event.getEventType(),
+            nvl(event.getPatientPhone()),
+            nvl(event.getPatientEmail()),
             result != null && result.getProviderMessageId() != null ? result.getProviderMessageId() : ""
         );
     }

@@ -3,6 +3,7 @@ package com.openmrs.notification.poller;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.outbox.OutboxService;
+import com.openmrs.notification.service.PersonContactService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -67,11 +68,12 @@ public class OpenMrsAppointmentPoller {
     /** How far ahead to search for appointments (hours). */
     private static final int POLL_WINDOW_HOURS = 48;
 
-    private final RestTemplate   restTemplate;
-    private final RabbitTemplate rabbitTemplate;
-    private final JdbcTemplate   jdbc;
-    private final OutboxService  outboxService;
-    private final String         openmrsBaseUrl;
+    private final RestTemplate         restTemplate;
+    private final RabbitTemplate       rabbitTemplate;
+    private final JdbcTemplate         jdbc;
+    private final OutboxService        outboxService;
+    private final PersonContactService personContactService;
+    private final String               openmrsBaseUrl;
 
     // Circuit breaker state (in-memory — resets on restart, which is fine)
     private int  consecutiveFailures = 0;
@@ -82,12 +84,14 @@ public class OpenMrsAppointmentPoller {
             RabbitTemplate rabbitTemplate,
             JdbcTemplate jdbc,
             OutboxService outboxService,
+            PersonContactService personContactService,
             @Value("${openmrs.base-url:http://gateway/openmrs}") String openmrsBaseUrl) {
-        this.restTemplate   = restTemplate;
-        this.rabbitTemplate = rabbitTemplate;
-        this.jdbc           = jdbc;
-        this.outboxService  = outboxService;
-        this.openmrsBaseUrl = openmrsBaseUrl;
+        this.restTemplate         = restTemplate;
+        this.rabbitTemplate       = rabbitTemplate;
+        this.jdbc                 = jdbc;
+        this.outboxService        = outboxService;
+        this.personContactService = personContactService;
+        this.openmrsBaseUrl       = openmrsBaseUrl;
     }
 
     /**
@@ -242,6 +246,10 @@ public class OpenMrsAppointmentPoller {
         event.setAppointmentTime(apt.getStartDateTime());
         event.setOccurredAt(Instant.now());
         event.setEventType(statusToEventType(apt.getStatus(), previousStatus));
+
+        // Fase 2: contactgegevens ophalen via GET /ws/rest/v1/person/{uuid}?v=full
+        personContactService.enrichEvent(event);
+
         return event;
     }
 
