@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import com.openmrs.notification.util.MessageHelper;
+
 import java.time.Instant;
 import java.util.Map;
 
@@ -85,8 +87,11 @@ public class SecurePostProvider implements NotificationProvider {
             headers.setBearerAuth(token);
             headers.set("X-STUDENT-GROUP", studentGroup);
 
+            String recipient = event.getPatientEmail() != null ? event.getPatientEmail() : "unknown@example.com";
+            log.debug("[SecurePost] Sturen naar {} — appointment={}",
+                    MessageHelper.mask(recipient), event.getAppointmentUuid());
             Map<String, Object> body = Map.of(
-                    "recipient", event.getPatientEmail() != null ? event.getPatientEmail() : "unknown@example.com",
+                    "recipient", recipient,
                     "subject",   subjectFor(event),
                     "body",      buildMessage(event)
             );
@@ -167,12 +172,15 @@ public class SecurePostProvider implements NotificationProvider {
     }
 
     private String buildMessage(AppointmentEvent event) {
+        String time     = MessageHelper.formatTime(event.getAppointmentTime());
+        String loc      = MessageHelper.locationSuffix(event.getLocationName());
+        String comments = MessageHelper.commentsSuffix(event.getComments());
         return switch (event.getEventType()) {
-            case SCHEDULED    -> String.format("Uw afspraak op %s is bevestigd.", event.getAppointmentTime());
-            case UPDATED      -> String.format("Uw afspraak is gewijzigd naar %s.", event.getAppointmentTime());
-            case CANCELLED    -> "Uw afspraak is geannuleerd. Neem contact op om opnieuw in te plannen.";
-            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s.", event.getAppointmentTime());
-            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur om %s.", event.getAppointmentTime());
+            case SCHEDULED    -> String.format("Uw afspraak op %s%s is bevestigd.%s", time, loc, comments);
+            case UPDATED      -> String.format("Uw afspraak is gewijzigd naar %s%s.%s", time, loc, comments);
+            case CANCELLED    -> String.format("Uw afspraak op %s is geannuleerd. Neem contact op om opnieuw in te plannen.", time);
+            case REMINDER_24H -> String.format("Herinnering: uw afspraak is morgen om %s%s.%s", time, loc, comments);
+            case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur (%s)%s.%s", time, loc, comments);
         };
     }
 }
