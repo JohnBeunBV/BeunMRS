@@ -1,5 +1,6 @@
 package com.openmrs.notification.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -18,10 +19,13 @@ public class AppConfig {
     /**
      * Jackson-based AMQP message converter — deserializes JSON from RabbitMQ
      * into AppointmentEvent POJOs automatically.
+     *
+     * Uses the Spring-managed ObjectMapper (with JavaTimeModule, etc.) so that
+     * serialization settings are consistent with ReminderScheduler.toJson().
      */
     @Bean
-    public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+    public MessageConverter jsonMessageConverter(ObjectMapper objectMapper) {
+        return new Jackson2JsonMessageConverter(objectMapper);
     }
 
     /**

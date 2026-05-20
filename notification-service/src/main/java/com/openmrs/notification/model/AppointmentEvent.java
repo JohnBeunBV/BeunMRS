@@ -29,6 +29,8 @@ public class AppointmentEvent {
     private Instant appointmentTime;
     private String providerName;
     private String locationName;
+    /** Optional free-text instructions from OpenMRS (e.g. "nuchter komen"). */
+    private String comments;
     private EventType eventType;
     private Instant occurredAt;
 
@@ -57,6 +59,9 @@ public class AppointmentEvent {
 
     public String getLocationName() { return locationName; }
     public void setLocationName(String locationName) { this.locationName = locationName; }
+
+    public String getComments() { return comments; }
+    public void setComments(String comments) { this.comments = comments; }
 
     public EventType getEventType() { return eventType; }
     public void setEventType(EventType eventType) { this.eventType = eventType; }
