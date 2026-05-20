@@ -25,10 +25,66 @@ Getest en bevonden:
 
 **Conclusie:** AtomFeed vereist een volledige Bahmni-omgeving en is daarmee minder geschikt voor een standalone SaaS module die met willekeurige OpenMRS-instanties werkt. AtomFeed wordt aanbevolen als productie-verbetering wanneer een volledige Bahmni-distributie beschikbaar is.
 
-#### Polling (gekozen aanpak)
-De communicatiemodule gebruikt **periodieke polling** via de appointments REST API. Dit werkt met elke standaard OpenMRS-instantie zonder extra modules.
+---
 
-Gebruikte endpoints (getest en werkend):
+#### Gekozen aanpak: FHIR2 polling (primair) + REST v1 reconciliatie (backup)
+
+De communicatiemodule gebruikt **twee complementaire polling-lagen** die samen garanderen dat geen enkele afspraak permanent gemist wordt.
+
+##### Laag 1 — Primaire poller (FHIR2, elke 2 minuten)
+
+De `OpenMrsAppointmentPoller` bevraagt de **OpenMRS FHIR2 R4 API** conform de keuze in ADR-003. Dit endpoint volgt de HL7 FHIR R4-standaard en is beschikbaar in elke standaard OpenMRS 3 (O3) installatie zonder extra modules.
+
+```
+GET /ws/fhir2/R4/Appointment?date=ge{watermark}&_sort=date&_count=200
+Authorization: Basic {credentials}
+```
+
+Respons (FHIR Bundle):
+```json
+{
+  "resourceType": "Bundle",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Appointment",
+        "id": "6df8cc30-a376-4026-b660-6289f649e01e",
+        "status": "booked",
+        "start": "2025-06-15T09:00:00+00:00",
+        "participant": [
+          {
+            "actor": {
+              "reference": "Patient/620704f9-3e28-423c-b537-c835649390f8",
+              "display": "Jan Jansen"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+FHIR-status mapping naar interne `EventType`:
+
+| FHIR status | Interne EventType | RabbitMQ routing key |
+|---|---|---|
+| `booked` | `SCHEDULED` | `appointment.scheduled` |
+| `cancelled` / `noshow` | `CANCELLED` | `appointment.cancelled` |
+| overige | `UPDATED` | `appointment.updated` |
+
+##### Laag 2 — Reconciliatie-poller (REST v1, elke 5 minuten)
+
+De `AppointmentReconciler` bevraagt de **OpenMRS REST v1 API** als vangnet. Dit is een bewust ander endpoint — zo worden ook afspraken opgepikt die de FHIR-laag eventueel gemist heeft (bijv. tijdens RabbitMQ-downtime of herstart van de service).
+
+```
+GET /ws/rest/v1/appointment?lastUpdated={watermark}&v=full
+Authorization: Basic {credentials}
+```
+
+De reconciliator controleert of een afspraak al verwerkt is via de `notification_log` tabel voordat hij opnieuw dispatcht — zo worden dubbele notificaties voorkomen.
+
+##### Overzicht beschikbare REST v1 endpoints (getest en werkend)
 
 | Methode | Endpoint | Gebruik |
 |---|---|---|
@@ -37,11 +93,6 @@ Gebruikte endpoints (getest en werkend):
 | GET | `/ws/rest/v1/appointmentService/all/full` | Services en serviceTypes ophalen |
 | POST | `/ws/rest/v1/appointment` | Afspraak aanmaken (getest) |
 | POST | `/ws/rest/v1/appointment/{uuid}/changeStatus` | Status wijzigen |
-
-Aanpak:
-- Poll elke 5 minuten met een tijdvenster van 48 uur voor nabije afspraken
-- Eén keer per nacht een brede sync over 30 dagen voor verre toekomstige afspraken
-- Vergelijk UUIDs met eigen database om nieuw/gewijzigd/geannuleerd te detecteren
 
 ---
 
@@ -105,15 +156,6 @@ POST /ws/rest/v1/appointment
 }
 ```
 
-**Afspraken zoeken op tijdvenster (polling):**
-```json
-POST /ws/rest/v1/appointment/search
-{
-  "startDate": "<nu>",
-  "endDate": "<nu + 48 uur>"
-}
-```
-
 ---
 
 ## Flow: afspraak aangemaakt in OpenMRS
@@ -122,25 +164,30 @@ POST /ws/rest/v1/appointment/search
 
 ### 1. OpenMRS slaat de appointment op
 
-De afspraak wordt aangemaakt via de Bahmni Appointment Scheduling module. De communicatiemodule detecteert dit via polling.
+De afspraak wordt aangemaakt via de Bahmni Appointment Scheduling module. De communicatiemodule detecteert dit via de FHIR2 poller.
 
 ---
 
-### 2. Poller detecteert de nieuwe appointment
+### 2. FHIR2 Poller detecteert de nieuwe appointment
 
-Elke 5 minuten voert de poller een search uit en vergelijkt de resultaten met de eigen database:
+Elke 2 minuten bevraagt de poller de FHIR2 API en vergelijkt de resultaten met de eigen database:
 
 ```
-POST /ws/rest/v1/appointment/search
-{
-  "startDate": "<nu>",
-  "endDate": "<nu + 48 uur>"
-}
+GET /ws/fhir2/R4/Appointment?date=ge{watermark}&_sort=date&_count=200
 
-→ UUID niet in DB?               → nieuw → verwerk
-→ UUID wel in DB, status changed → gewijzigd/geannuleerd → herplan
-→ UUID wel in DB, niets veranderd → sla over
+→ UUID niet in seen_appointments?    → nieuw → verwerk
+→ UUID wel in DB, status veranderd   → gewijzigd/geannuleerd → herplan
+→ UUID wel in DB, niets veranderd    → sla over
 ```
+
+Veerkrachtmechanismen actief tijdens elke poll:
+
+| Mechanisme | Werking |
+|---|---|
+| **Watermark cursor** | Opgeslagen in `sync_watermarks` (Postgres). Herstelt na iedere downtime automatisch. |
+| **Nooit-vooruit-bij-fout** | Watermark schuift alleen op als álle afspraken succesvol in de wachtrij staan. |
+| **Circuit breaker** | Na 5 opeenvolgende fouten pauzeert de poller 2 minuten. Herstelt automatisch. |
+| **Persist-before-publish** | Afspraken worden eerst opgeslagen in `outbox_events`, daarna pas gepubliceerd naar RabbitMQ. |
 
 ---
 
@@ -159,13 +206,13 @@ POST /ws/rest/v1/appointment/search
 }
 ```
 
-Gepubliceerd op queue: `appointment.created`
+Gepubliceerd op queue: `appointment.scheduled`
 
 ---
 
 ### 4. Worker pakt het bericht op
 
-De worker luistert naar `appointment.created` en doet drie dingen:
+De worker luistert naar `appointment.scheduled` en doet drie dingen:
 
 #### a) Bevestigingsbericht sturen (direct)
 
@@ -244,17 +291,32 @@ Zelfde verhaal voor `notification.1h`. Worker checkt status → nog Scheduled �
 
 ### Wat als de afspraak geannuleerd wordt?
 
-Stel Jan belt op 14 juni om zijn afspraak te annuleren. OpenMRS zet de status op `Cancelled`. Bij de volgende poll detecteert de poller dat de status van `abc-123` veranderd is van `Scheduled` naar `Cancelled`. De poller publiceert naar `appointment.cancelled` → de worker markeert de geplande 1u notificatie als geannuleerd → die wordt nooit verstuurd.
+Stel Jan belt op 14 juni om zijn afspraak te annuleren. OpenMRS zet de status op `Cancelled`. Bij de volgende FHIR2-poll detecteert de poller dat de FHIR-status van `6df8cc30-...` veranderd is van `booked` naar `cancelled`. De poller publiceert naar `appointment.cancelled` → de worker markeert de geplande 1u notificatie als geannuleerd → die wordt nooit verstuurd.
 
 Mogelijke statuswaarden:
 
-| Status | Betekenis | Actie |
+| OpenMRS status | FHIR status | Actie |
 |---|---|---|
-| Scheduled | Ingepland | Notificaties versturen |
-| CheckedIn | Patiënt aangemeld | Geen notificatie |
-| Completed | Afgerond | Geen notificatie |
-| Cancelled | Geannuleerd | Geplande notificaties annuleren |
-| Missed | Niet verschenen | Geen notificatie |
+| Scheduled | `booked` | Notificaties versturen |
+| CheckedIn | `arrived` | Geen notificatie |
+| Completed | `fulfilled` | Geen notificatie |
+| Cancelled | `cancelled` | Geplande notificaties annuleren |
+| Missed | `noshow` | Geen notificatie |
+
+---
+
+### Wat als de FHIR2 poller een event mist?
+
+De `AppointmentReconciler` draait elke 5 minuten als extra vangnet via de REST v1 API:
+
+```
+GET /ws/rest/v1/appointment?lastUpdated={watermark}&v=full
+
+→ UUID al in notification_log? → overslaan (geen dubbele notificatie)
+→ UUID nog niet verwerkt?       → direct dispatchen
+```
+
+Dit vangt situaties op waarbij de primaire FHIR2-poller iets gemist heeft, bijvoorbeeld tijdens RabbitMQ-downtime of een herstart van de service. De watermark wordt ook hier alleen vooruitgezet na een succesvolle verwerking.
 
 ---
 
@@ -262,7 +324,7 @@ Mogelijke statuswaarden:
 
 ```
 13 juni 10:00  → Afspraak aangemaakt in OpenMRS
-13 juni 10:05  → Poller detecteert, worker stuurt bevestiging ✓
+13 juni 10:02  → FHIR2 poller detecteert, worker stuurt bevestiging ✓
 14 juni 09:05  → 24u notificatie verstuurd ✓
 15 juni 08:05  → 1u notificatie verstuurd ✓
 15 juni 09:00  → Afspraak vindt plaats
@@ -273,32 +335,36 @@ Mogelijke statuswaarden:
 ### Architectuur overzicht
 
 ```
-OpenMRS (AtomFeed)
+OpenMRS (FHIR2 R4 API)
   │
   ▼
-Poller (elke 5 min)
-  │  detecteert nieuwe/gewijzigde appointments
-  │  publiceert naar RabbitMQ
-  ▼
-RabbitMQ
-  ├── appointment.created  ──► Worker
-  │                              │ direct  → bevestigingsbericht
-  │                              │ delay   → notification.24h
-  │                              └── delay → notification.1h
+FHIR2 Poller (elke 2 min)        REST v1 Reconciliator (elke 5 min)
+  │  /ws/fhir2/R4/Appointment       │  /ws/rest/v1/appointment
+  │  watermark + circuit breaker    │  watermark + duplicate check
+  │  persist-before-publish         │
+  │                                 │
+  └─────────────┬───────────────────┘
+                │ (vult dezelfde exchange)
+                ▼
+           RabbitMQ
+  ├── appointment.scheduled  ──► Worker
+  │                                │ direct  → bevestigingsbericht
+  │                                │ delay   → notification.24h
+  │                                └── delay → notification.1h
   │
   ├── appointment.cancelled ──► Worker
-  │                              └── annuleer geplande notificaties
+  │                                └── annuleer geplande notificaties
   │
   ├── notification.24h ────────► Worker
-  │                              └── check status → stuur bericht
+  │                                └── check status → stuur bericht
   │
   └── notification.1h ─────────► Worker
-                                  └── check status → stuur bericht
-                                            │
-                                            ▼
-                                  SwiftSend / LegacyLink
-                                  AsyncFlow / SecurePost
-                                            │
-                                            ▼
-                                      Log in database
+                                   └── check status → stuur bericht
+                                             │
+                                             ▼
+                                   SwiftSend / LegacyLink
+                                   AsyncFlow / SecurePost
+                                             │
+                                             ▼
+                                       Log in database
 ```
