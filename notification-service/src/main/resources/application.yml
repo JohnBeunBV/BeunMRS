@@ -72,6 +72,11 @@ rabbitmq:
 loki:
   url: ${LOKI_URL:http://loki:3100/loki/api/v1/push}
 
+# ── Mock provider (disable in production / when using FakeComWorld) ───────
+mock:
+  messaging:
+    enabled: false
+
 # ── Actuator ──────────────────────────────────────────────────────────────
 management:
   endpoints:

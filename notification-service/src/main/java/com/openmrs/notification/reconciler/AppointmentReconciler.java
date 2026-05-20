@@ -133,15 +133,41 @@ public class AppointmentReconciler {
     private AppointmentEvent mapToEvent(Map<String, Object> raw) {
         AppointmentEvent e = new AppointmentEvent();
         e.setAppointmentUuid((String) raw.get("uuid"));
-        e.setEventType(AppointmentEvent.EventType.SCHEDULED); // reconciler assumes scheduled; cancelled have separate endpoint
         e.setOccurredAt(Instant.now());
 
-        // Extract patient details from nested map
+        // Map the actual OpenMRS status to our internal EventType
+        e.setEventType(statusToEventType((String) raw.get("status")));
+
+        // Patient
         Map<String, Object> patient = (Map<String, Object>) raw.get("patient");
         if (patient != null) {
             e.setPatientUuid((String) patient.get("uuid"));
+            e.setPatientName((String) patient.get("name"));
         }
+
+        // startDateTime is a Unix timestamp in milliseconds (same as the Poller)
+        Object start = raw.get("startDateTime");
+        if (start instanceof Number) {
+            e.setAppointmentTime(Instant.ofEpochMilli(((Number) start).longValue()));
+        }
+
+        // Location
+        Map<String, Object> location = (Map<String, Object>) raw.get("location");
+        if (location != null) {
+            e.setLocationName((String) location.get("name"));
+        }
+
         return e;
+    }
+
+    /** Maps OpenMRS appointment status to internal EventType. */
+    private AppointmentEvent.EventType statusToEventType(String status) {
+        if (status == null) return AppointmentEvent.EventType.SCHEDULED;
+        return switch (status.toLowerCase()) {
+            case "cancelled", "missed" -> AppointmentEvent.EventType.CANCELLED;
+            case "scheduled"           -> AppointmentEvent.EventType.SCHEDULED;
+            default                    -> AppointmentEvent.EventType.UPDATED;
+        };
     }
 
     private boolean alreadyProcessed(AppointmentEvent event) {

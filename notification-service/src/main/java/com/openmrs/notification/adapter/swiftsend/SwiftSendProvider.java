@@ -1,6 +1,5 @@
 package com.openmrs.notification.adapter.swiftsend;
 
-import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.adapter.NotificationProvider;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationChannel;

@@ -11,6 +11,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Maven build output — never commit compiled classes
+**/target/
+
 # Docker build artefacts
 notification-service/node_modules/
 notification-service/out/

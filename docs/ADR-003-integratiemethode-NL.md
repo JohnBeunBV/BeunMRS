@@ -106,29 +106,47 @@ De AtomFeed module genereert RSS-achtige feeds van wijzigingen. De communicatiem
 
 ## Beslissing
 
-**Gekozen: Optie 3 — Event-driven via OpenMRS FHIR2 REST API + RabbitMQ**
+**Gekozen: Optie 3 — Event-driven via OpenMRS REST v1 API + RabbitMQ**
 
-### Implementatie in sprint 3
+> **Bijgesteld na test (2026-05-20):** Oorspronkelijk was FHIR2 gepland als primaire API. Na praktijktest bleek dat de FHIR2-module in de gebruikte OpenMRS O3-distributie het `Appointment` resource type niet ondersteunt (`HAPI-0302: Unknown resource type 'Appointment'`). De FHIR2 Patient resource werkt wél, maar geeft geen extra voordeel boven REST v1 — contactgegevens (`telecom[]`) zijn leeg als ze niet in OpenMRS zijn opgeslagen, ongeacht welke API je gebruikt. De volledige integratie gebruikt daarom consistent **REST v1**.
 
-De `OpenMrsAppointmentPoller` bevraagt de FHIR R4 Appointment endpoint:
+### Implementatie
+
+De `OpenMrsAppointmentPoller` bevraagt de REST v1 appointment/search endpoint:
 
 ```
-GET /ws/fhir2/R4/Appointment?date=ge{watermark}&_sort=date&_count=200
+POST /ws/rest/v1/appointment/search
+{ "startDate": "<now>", "endDate": "<now + 48h>" }
 Authorization: Basic {admin credentials}
+```
+
+De `AppointmentReconciler` (backup) bevraagt:
+```
+GET /ws/rest/v1/appointment?lastUpdated={watermark}&v=full
 ```
 
 Veerkrachtmechanismen in de poller:
 | Mechanisme | Implementatie |
 |---|---|
-| **Watermark cursor** | Opgeslagen in `sync_watermarks` tabel in Postgres. Herstelt na iedere downtime. |
-| **Nooit-vervroeg-bij-fout** | Watermark wordt alleen vooruit gezet als àlle opgehaalde afspraken succesvol in de wachtrij staan. |
+| **Sliding window** | Poll de komende 48 uur — vangt zowel nieuwe als gewijzigde afspraken op. |
+| **Status-change detectie** | Vergelijkt huidige status met `seen_appointments` tabel. Alleen bij wijziging wordt een event gepubliceerd. |
 | **Circuit breaker** | Na 5 opeenvolgende fouten pauzeert de poller 2 minuten. Herstelt automatisch. |
 | **Duplicate guard** | `seen_appointments` tabel voorkomt dubbele notificaties bij overlappende poll-vensters. |
 | **Persist-before-publish** | Afspraken worden eerst opgeslagen in `outbox_events`, daarna pas gepubliceerd naar RabbitMQ. |
 
-### Aansluiting op HL7/FHIR
+### FHIR — bewuste keuze om te skippen
 
-De FHIR2 module in OpenMRS O3 exposeert `Appointment` resources conform **FHIR R4**. Ons interne `AppointmentEvent` model wordt gevuld vanuit de FHIR-velden `id`, `status`, `start`, en `participant[].actor` (patiëntverwijzing). Hierdoor is de integratie in de toekomst uitbreidbaar naar andere FHIR-compatibele systemen zonder codewijzigingen in de downstream verwerking.
+| Resource | FHIR2 | REST v1 | Gekozen |
+|---|---|---|---|
+| Appointment ophalen | ❌ niet ondersteund | ✅ werkt | REST v1 |
+| Patiënt contactgegevens | ✅ werkt (telecom[]) | ✅ werkt (person/attributes) | REST v1 |
+
+FHIR2 wordt volledig vermeden omdat:
+1. Appointment (kern van het systeem) wordt niet ondersteund.
+2. Patient via REST v1 geeft dezelfde data — consistent één API is eenvoudiger.
+3. De FHIR-module-installatiestatus verschilt per OpenMRS-instantie; REST v1 is altijd aanwezig.
+
+Het interne `AppointmentEvent` model is bewust provider-agnostisch — als een toekomstige installatie wél FHIR2 Appointment ondersteunt, kan de Poller worden uitgewisseld zonder wijzigingen aan consumers, providers of outbox.
 
 ### Schaalbaarheid
 

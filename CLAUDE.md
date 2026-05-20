@@ -6,7 +6,7 @@ Projectcontext voor Claude Code. Dit bestand beschrijft wat er staat, wat er nog
 
 ## Wat is dit project?
 
-Een **SaaS notificatiemodule** die naast OpenMRS draait en patiënten automatisch herinnert aan hun afspraken via externe messaging providers. De module integreert met OpenMRS via de FHIR2 API en verstuurt berichten via vier mock-providers (FakeComWorld).
+Een **SaaS notificatiemodule** die naast OpenMRS draait en patiënten automatisch herinnert aan hun afspraken via externe messaging providers. De module integreert met OpenMRS via de **REST v1 API** (FHIR2 Appointment niet ondersteund in deze installatie) en verstuurt berichten via vier mock-providers (FakeComWorld).
 
 **Stack:** Java 21 · Spring Boot 3.2 · PostgreSQL · RabbitMQ · Docker Compose · Grafana/Loki
 
@@ -114,18 +114,22 @@ De opdracht vereist:
 #### 2. Patiënt contactgegevens ophalen
 **Bestand:** `OpenMrsAppointmentPoller.java` → methode `toEvent()`
 
-`patientPhone` en `patientEmail` zijn altijd `null`. De FHIR Appointment resource bevat alleen een `Patient/{uuid}` referentie. Er mist een extra call:
+`patientPhone` en `patientEmail` zijn altijd `null`. De REST v1 appointment response bevat alleen een `patient.uuid`. Er mist een extra call:
 
 ```
-GET /ws/fhir2/R4/Patient/{patientUuid}
-→ lees telecom[] array
-→ system="phone" → patientPhone
-→ system="email" → patientEmail
+GET /ws/rest/v1/person/{patientUuid}?v=full
+→ lees attributes[] → zoek attributeType.display = "Phone Number" → patientPhone
+→ lees attributes[] → zoek attributeType.display = "Email" → patientEmail
 ```
 
-Zonder dit sturen alle providers naar `"unknown"` / `"unknown@example.com"`.
+Eerst verifiëren welke typen beschikbaar zijn:
+```
+GET /ws/rest/v1/personattributetype?v=default
+```
 
-Hetzelfde probleem zit in `AppointmentReconciler.java` → `mapToEvent()`.
+Zonder dit sturen alle providers naar `"unknown"` / `null`.
+
+Hetzelfde probleem zit in `AppointmentReconciler.java` → `mapToEvent()`. (Reconciler vult nu wél `patientName`/`appointmentTime`/`locationName`, maar nog geen phone/email.)
 
 ---
 
@@ -150,21 +154,14 @@ public void relay() {
 
 ### 🟡 BUGS — compileren maar gedragen zich fout
 
-#### 4. `MockMessagingProvider` is enabled by default maar container bestaat niet
-`mock.messaging.enabled` staat nergens in `application.yml` → default is `true` → elke dispatch probeert `http://mock-messaging:8025` te bereiken → connection error.
+#### ~~4. `MockMessagingProvider` is enabled by default maar container bestaat niet~~ ✅ opgelost
+`mock.messaging.enabled: false` toegevoegd aan `application.yml`.
 
-**Fix:** Voeg toe aan `application.yml`:
-```yaml
-mock:
-  messaging:
-    enabled: false
-```
+#### ~~5. `AppointmentReconciler` zet altijd `EventType.SCHEDULED`~~ ✅ opgelost
+`mapToEvent()` leest nu de werkelijke `status` uit het REST-response en roept `statusToEventType()` aan. Tevens worden nu ook `patientName`, `appointmentTime` en `locationName` gevuld.
 
-#### 5. `AppointmentReconciler` zet altijd `EventType.SCHEDULED`
-`AppointmentReconciler.java:136` — ook gecancellede afspraken krijgen `SCHEDULED`. Status moet uit het REST-response worden gelezen en gemapt naar `EventType`.
-
-#### 6. Duplicate import in `SwiftSendProvider.java`
-Regels 6 en 7 importeren allebei `NotificationChannel`. Compileert wel maar veroorzaakt een waarschuwing.
+#### ~~6. Duplicate import in `SwiftSendProvider.java`~~ ✅ opgelost
+Eerste `NotificationChannel`-import verwijderd.
 
 #### 7. `RestTemplate` stuurt OpenMRS Basic Auth naar FakeComWorld
 `AppConfig` zet `Authorization: Basic <openmrs>` als default header op de gedeelde `RestTemplate`. Dit header gaat mee naar alle FakeComWorld-calls. Overweeg een aparte `RestTemplate` bean zonder auth voor providers (bijv. `@Qualifier("providerRestTemplate")`).
@@ -206,7 +203,7 @@ Regels 6 en 7 importeren allebei `NotificationChannel`. Compileert wel maar vero
 - **Container naam `openmrs-backend`** — gewijzigd van `backend` zodat Promtail de juiste `service` label geeft in Grafana (`{service="openmrs-backend"}`).
 - **`OPENMRS_TAG` vs `OPENMRS_VERSION`** — `docker-compose.yml` gebruikt `${OPENMRS_TAG:-qa}`, maar `.env` had `OPENMRS_VERSION`. Gebruik `OPENMRS_TAG` in `.env` als je een specifieke versie wilt pinnen.
 - **Promtail pipeline** — `output: source: message` is verwijderd. Plain-text logs (OpenMRS/Tomcat) werden anders overschreven met een lege string.
-- **SwiftSendProvider.java** heeft een duplicate import op regel 6/7 (`NotificationChannel` twee keer geïmporteerd).
+- ~~**SwiftSendProvider.java** duplicate import~~ — opgelost.
 
 ---
 
@@ -245,27 +242,30 @@ docker compose up -d
 
 ### 🔴 Fase 1 — Snelle bugfixes *(< 1 uur)*
 
-- [ ] **1a.** `MockMessagingProvider` uitschakelen — voeg toe aan `application.yml`:
-  ```yaml
-  mock:
-    messaging:
-      enabled: false
-  ```
-- [ ] **1b.** Duplicate import verwijderen in `SwiftSendProvider.java` (regel 6 of 7 — `NotificationChannel` staat twee keer)
-- [ ] **1c.** `AppointmentReconciler.java:136` repareren — lees `status` uit het REST-response en map naar `EventType` i.p.v. altijd `SCHEDULED`
+- [x] **1a.** `MockMessagingProvider` uitschakelen — `mock.messaging.enabled: false` toegevoegd aan `application.yml`
+- [x] **1b.** Duplicate import verwijderd uit `SwiftSendProvider.java`
+- [x] **1c.** `AppointmentReconciler.mapToEvent()` repareert — leest nu werkelijke `status`, roept `statusToEventType()` aan; vult ook `patientName`, `appointmentTime`, `locationName`
+- [x] **1d.** Poller omgeschreven van FHIR2 naar `POST /ws/rest/v1/appointment/search` (vorige sessie)
 
 ---
 
 ### 🔴 Fase 2 — Patiënt contactgegevens ophalen *(2-3 uur)*
 
-- [ ] **2a.** Extra FHIR call toevoegen in `OpenMrsAppointmentPoller.toEvent()`:
+> FHIR2 volledig geskipt (zie ADR-003). FHIR2 Appointment werkt niet; FHIR2 Patient werkt wel maar geeft geen voordeel boven REST v1. Alle integratie via REST v1.
+
+- [ ] **2a.** Extra REST v1 call toevoegen in `OpenMrsAppointmentPoller.toEvent()`:
   ```
-  GET /ws/fhir2/R4/Patient/{patientUuid}
-  → lees telecom[] → system="phone" → patientPhone
-  → lees telecom[] → system="email" → patientEmail
+  GET /ws/rest/v1/person/{patientUuid}?v=full
+  → lees attributes[] → zoek op attributeType.display = "Phone Number" → patientPhone
+  → lees attributes[] → zoek op attributeType.display = "Email" → patientEmail
   ```
 - [ ] **2b.** Zelfde ophaallogica toevoegen in `AppointmentReconciler.mapToEvent()`
-- [ ] **2c.** Verifiëren: afspraak aanmaken in OpenMRS → controleer in `notification_log` dat phone/email ingevuld zijn
+- [ ] **2c.** Eerst testen welke person attributes beschikbaar zijn:
+  ```
+  GET http://localhost/openmrs/ws/rest/v1/personattributetype?v=default
+  ```
+  Gebruik de exacte `display` namen uit die response.
+- [ ] **2d.** Verifiëren: patiënt aanmaken mét phone/email → afspraak aanmaken → controleer in `notification_log` dat phone/email ingevuld zijn
 
 ---
 
