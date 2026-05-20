@@ -23,3 +23,5 @@ notification-service/.next/
 *.log
 /openmrs/
 /out/
+
+.claude/*

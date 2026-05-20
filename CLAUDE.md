@@ -213,6 +213,7 @@ Eerste `NotificationChannel`-import verwijderd.
 
 ## Bekende valkuilen
 
+- **`comments`-veld niet beschikbaar via search API** — `POST /ws/rest/v1/appointment/search` retourneert altijd `"comments": null`, ook als de afspraak aangemaakt is met een opmerking. De code mapt het veld correct, maar deze versie van de Bahmni module levert het niet mee in de zoekrespons. Workaround: niet beschikbaar zonder een aparte `GET` per afspraak (die ook niet werkt in deze installatie). Gedocumenteerd als bekende beperking — code is klaar voor als een toekomstige versie het wél levert.
 - **FHIR2 Appointment niet ondersteund** — `GET /ws/fhir2/R4/Appointment` geeft `HAPI-0302: Unknown resource type 'Appointment'`. De FHIR2 module in deze OpenMRS installatie heeft geen Appointment-mapping. De Poller gebruikt daarom `POST /ws/rest/v1/appointment/search`. Gebruik voor patiënten wél FHIR2 (`/ws/fhir2/R4/Patient/{uuid}`).
 - **OpenMRS start traag** — eerste opstart duurt 5-10 minuten (Liquibase + module loading). Wacht op `Server startup in [XXXX] milliseconds` in de backend logs voordat je de UI test.
 - **Container naam `openmrs-backend`** — gewijzigd van `backend` zodat Promtail de juiste `service` label geeft in Grafana (`{service="openmrs-backend"}`).
@@ -332,25 +333,23 @@ docker compose up -d
 
 #### 🟡 Snel te fixen (< 30 min per stap)
 
-- [ ] **8a.** **Locatienaam + opmerkingen in berichttekst**
-  - Alle provider `buildMessage()` methoden bevatten nu `locationName` bij bevestiging, bijv.:
-    `"Uw afspraak op %s bij %s is bevestigd."` (time, locationName)
-  - `comments` veld uit OpenMRS meenemen als extra instructie, bijv. nuchter komen, documenten meenemen.
-  - Bestanden: `MockMessagingProvider`, `SwiftSendProvider`, `LegacyLinkProvider`, `AsyncFlowProvider`, `SecurePostProvider`
+- [x] **8a.** **Locatienaam + opmerkingen in berichttekst** ✅
+  - `comments` veld toegevoegd aan `AppointmentEvent` + gemapped in `OpenMrsAppointmentPoller.toEvent()`.
+  - Nieuwe utility `util/MessageHelper.java` met `locationSuffix()` en `commentsSuffix()`.
+  - Alle 5 providers bijgewerkt: `buildMessage()` gebruikt nu `locationName` én `comments`.
 
-- [ ] **8b.** **Reminder niet versturen als afspraak al voorbij is**
-  - In `ReminderDispatchJob.pollAndDispatch()`: vóór versturen controleren of `appointmentTime > now()`.
-  - Als al voorbij → status = `'skipped'` (of `'cancelled'`) en overslaan, niet versturen.
+- [x] **8b.** **Reminder niet versturen als afspraak al voorbij is** ✅
+  - In `ReminderDispatchJob.processReminder()`: check `appointmentTime.isBefore(Instant.now())`.
+  - Als al voorbij → `status = 'skipped'`, reminder overgeslagen + gelogd.
 
-- [ ] **8c.** **Patiëntdata maskeren in logs**
-  - Log statements mogen geen volledige telefoonnummers of e-mailadressen bevatten.
-  - Hulpfunctie toevoegen: `mask("0612345678") → "061****678"`, `mask("a@b.com") → "a@***.com"`
-  - Toepassen in `PersonContactService`, `NotificationDispatcher`, provider-adapters.
+- [x] **8c.** **Patiëntdata maskeren in logs** ✅
+  - `MessageHelper.mask()` toegevoegd: `"0612345678" → "061****678"`, `"a@b.com" → "a@***.com"`.
+  - Toegepast in `NotificationDispatcher` (info-log) en alle provider debug-logs (SwiftSend, LegacyLink, SecurePost).
 
-- [ ] **8d.** **Tijdzone-weergave voor patiënten**
-  - Berichten tonen nu de UTC `Instant` als ruwe tijdstempel. Omzetten naar `Europe/Amsterdam` (of configureerbare tijdzone) met `DateTimeFormatter` + `ZoneId`.
-  - Instelling: `notification.timezone=Europe/Amsterdam` in `application.yml`.
-  - Toepassen in alle `buildMessage()` methoden.
+- [x] **8d.** **Tijdzone-weergave voor patiënten** ✅
+  - `MessageHelper.formatTime()` converteert `Instant` naar `Europe/Amsterdam` met Nederlandse dag-/maandnamen.
+  - Voorbeeld: `"maandag 24 januari 2026 om 14:30"`.
+  - Toegepast in alle 5 `buildMessage()` methoden — vervangt de ruwe UTC `Instant.toString()`.
 
 ---
 
