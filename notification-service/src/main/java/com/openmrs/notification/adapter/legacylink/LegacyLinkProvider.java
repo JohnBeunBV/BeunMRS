@@ -65,7 +65,7 @@ public class LegacyLinkProvider implements NotificationProvider {
             headers.set("X-STUDENT-GROUP",  studentGroup);
 
             ResponseEntity<String> resp = restTemplate.exchange(
-                    baseUrl + "/api/legacylink/soap",
+                    baseUrl + "/LegacyLink/SendSms",
                     HttpMethod.POST,
                     new HttpEntity<>(soapBody, headers),
                     String.class
@@ -96,30 +96,23 @@ public class LegacyLinkProvider implements NotificationProvider {
             case CANCELLED -> "Uw afspraak is geannuleerd.";
         };
 
+        // Geen SOAP envelope — FakeComWorld verwacht plain XML met dit namespace
         return """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <soapenv:Envelope
-                xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-                xmlns:ll="http://legacylink.fakecomworld/messaging">
-              <soapenv:Header/>
-              <soapenv:Body>
-                <ll:SendMessageRequest>
-                  <ll:CorrelationId>%s</ll:CorrelationId>
-                  <ll:Recipient>%s</ll:Recipient>
-                  <ll:Message>%s</ll:Message>
-                  <ll:Reference>%s</ll:Reference>
-                </ll:SendMessageRequest>
-              </soapenv:Body>
-            </soapenv:Envelope>
-            """.formatted(correlationId, xmlEscape(recipient), xmlEscape(message), event.getAppointmentUuid());
+            <?xml version="1.0" encoding="utf-8"?>
+            <SendSmsRequest xmlns="http://legacylink.fakecomworld.com/v1">
+              <PhoneNumber>%s</PhoneNumber>
+              <MessageText>%s</MessageText>
+              <SenderIdentification>BeunMRS</SenderIdentification>
+            </SendSmsRequest>
+            """.formatted(xmlEscape(recipient), xmlEscape(message));
     }
 
-    private String extractMessageId(String soapResponse, String fallback) {
-        // Simple extraction — look for <MessageId>...</MessageId> in the response
-        int start = soapResponse.indexOf("<MessageId>");
-        int end   = soapResponse.indexOf("</MessageId>");
+    private String extractMessageId(String xmlResponse, String fallback) {
+        // LegacyLink antwoordt met <MessageReference>LGC-...</MessageReference>
+        int start = xmlResponse.indexOf("<MessageReference>");
+        int end   = xmlResponse.indexOf("</MessageReference>");
         if (start >= 0 && end > start) {
-            return soapResponse.substring(start + "<MessageId>".length(), end);
+            return xmlResponse.substring(start + "<MessageReference>".length(), end);
         }
         return fallback;
     }

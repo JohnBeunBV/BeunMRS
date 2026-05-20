@@ -67,21 +67,25 @@ public class AsyncFlowProvider implements NotificationProvider {
             headers.set("X-API-KEY",       apiKey);
             headers.set("X-STUDENT-GROUP", studentGroup);
 
+            // destination = ontvanger, content = bericht, priority = optioneel
+            String destination = event.getPatientPhone() != null ? event.getPatientPhone()
+                    : (event.getPatientUuid() != null ? event.getPatientUuid() : "unknown");
             Map<String, Object> body = Map.of(
-                    "recipient", event.getPatientUuid() != null ? event.getPatientUuid() : "unknown",
-                    "message",   buildMessage(event),
-                    "reference", event.getAppointmentUuid()
+                    "destination", destination,
+                    "content",     buildMessage(event),
+                    "priority",    "normal"
             );
 
             ResponseEntity<Map> resp = restTemplate.exchange(
-                    baseUrl + "/api/asyncflow/commands",
+                    baseUrl + "/asyncflow",
                     HttpMethod.POST,
                     new HttpEntity<>(body, headers),
                     Map.class
             );
 
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                String commandId = String.valueOf(resp.getBody().getOrDefault("commandId", "unknown"));
+                // FakeComWorld geeft trackingId terug (niet commandId)
+                String commandId = String.valueOf(resp.getBody().getOrDefault("trackingId", "unknown"));
                 log.info("[AsyncFlow] Command submitted — appointment={} commandId={}", event.getAppointmentUuid(), commandId);
                 persistCommand(commandId, event.getAppointmentUuid());
                 // Return "pending" — final outcome tracked by poller
@@ -123,7 +127,7 @@ public class AsyncFlowProvider implements NotificationProvider {
             headers.set("X-STUDENT-GROUP", studentGroup);
 
             ResponseEntity<Map> resp = restTemplate.exchange(
-                    baseUrl + "/api/asyncflow/commands/" + commandId,
+                    baseUrl + "/asyncflow/" + commandId,
                     HttpMethod.GET,
                     new HttpEntity<>(headers),
                     Map.class

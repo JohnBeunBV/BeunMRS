@@ -50,14 +50,15 @@ public class SwiftSendProvider implements NotificationProvider {
             headers.set("X-API-KEY",       apiKey);
             headers.set("X-STUDENT-GROUP", studentGroup);
 
+            // recipients is een array; content is de berichttekst
+            String recipient = event.getPatientPhone() != null ? event.getPatientPhone() : "unknown";
             Map<String, Object> body = Map.of(
-                    "recipient", event.getPatientPhone() != null ? event.getPatientPhone() : "unknown",
-                    "message",   buildMessage(event),
-                    "reference", event.getAppointmentUuid()
+                    "recipients", new String[]{ recipient },
+                    "content",    buildMessage(event)
             );
 
             ResponseEntity<Map> resp = restTemplate.exchange(
-                    baseUrl + "/api/swiftsend/messages",
+                    baseUrl + "/swiftsend",
                     HttpMethod.POST,
                     new HttpEntity<>(body, headers),
                     Map.class

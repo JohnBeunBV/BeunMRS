@@ -85,14 +85,13 @@ public class SecurePostProvider implements NotificationProvider {
             headers.set("X-STUDENT-GROUP", studentGroup);
 
             Map<String, Object> body = Map.of(
-                    "to",        event.getPatientEmail() != null ? event.getPatientEmail() : "unknown@example.com",
+                    "recipient", event.getPatientEmail() != null ? event.getPatientEmail() : "unknown@example.com",
                     "subject",   subjectFor(event),
-                    "body",      buildMessage(event),
-                    "reference", event.getAppointmentUuid()
+                    "body",      buildMessage(event)
             );
 
             ResponseEntity<Map> resp = restTemplate.exchange(
-                    baseUrl + "/api/securepost/messages",
+                    baseUrl + "/securepost/message",
                     HttpMethod.POST,
                     new HttpEntity<>(body, headers),
                     Map.class
@@ -139,7 +138,7 @@ public class SecurePostProvider implements NotificationProvider {
         );
 
         ResponseEntity<Map> resp = restTemplate.exchange(
-                baseUrl + "/api/securepost/auth/token",
+                baseUrl + "/securepost/auth",
                 HttpMethod.POST,
                 new HttpEntity<>(body, headers),
                 Map.class
@@ -149,7 +148,7 @@ public class SecurePostProvider implements NotificationProvider {
             throw new RuntimeException("Failed to obtain SecurePost JWT: HTTP " + resp.getStatusCode());
         }
 
-        cachedToken    = (String) resp.getBody().get("token");
+        cachedToken    = (String) resp.getBody().get("accessToken");  // veld heet accessToken, niet token
         // FakeComWorld returns expiresIn in seconds
         int expiresIn  = (int) resp.getBody().getOrDefault("expiresIn", 180);
         tokenExpiresAt = Instant.now().plusSeconds(expiresIn);

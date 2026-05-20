@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 
 /**
@@ -39,7 +40,7 @@ public class OutboxService {
                 providerName,
                 event.getEventType().name(),
                 result.isSuccess() ? "sent" : "failed",
-                result.isSuccess() ? Instant.now() : null,
+                result.isSuccess() ? Timestamp.from(Instant.now()) : null,
                 result.getErrorMessage(),
                 buildPayloadJson(event, result)
             );
