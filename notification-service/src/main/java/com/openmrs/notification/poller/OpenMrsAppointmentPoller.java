@@ -35,50 +35,54 @@ import java.util.Map;
  * Resilience design:
  * ─────────────────
  * 1. Sliding window — polls the next 48 hours from now. Catches new and
- *    recently-updated appointments within that window.
+ * recently-updated appointments within that window.
  *
  * 2. Duplicate guard — before publishing to RabbitMQ we check whether the
- *    appointment UUID was already queued (seen_appointments table). Status
- *    changes (Scheduled → Cancelled) trigger a re-queue with CANCELLED type.
+ * appointment UUID was already queued (seen_appointments table). Status
+ * changes (Scheduled → Cancelled) trigger a re-queue with CANCELLED type.
  *
  * 3. Circuit breaker (manual) — after CIRCUIT_OPEN_THRESHOLD consecutive
- *    OpenMRS failures we back off for CIRCUIT_OPEN_WAIT_MS and log an alert.
- *    When OpenMRS recovers the circuit resets automatically.
+ * OpenMRS failures we back off for CIRCUIT_OPEN_WAIT_MS and log an alert.
+ * When OpenMRS recovers the circuit resets automatically.
  *
  * 4. Never-advance-on-failure — watermark only moves forward after ALL
- *    fetched appointments have been processed without error.
+ * fetched appointments have been processed without error.
  *
  * 5. All fetched appointments are written to Postgres BEFORE being published
- *    to RabbitMQ. If the broker is down, we have the data and will retry.
+ * to RabbitMQ. If the broker is down, we have the data and will retry.
  *
  * Data flow:
- *   [Scheduler] → POST /ws/rest/v1/appointment/search (next 48h)
- *       → for each appointment: check seen_appointments for status change
- *       → new or changed: save to seen_appointments + outbox
- *       → publish AppointmentEvent to RabbitMQ exchange
+ * [Scheduler] → POST /ws/rest/v1/appointment/search (next 48h)
+ * → for each appointment: check seen_appointments for status change
+ * → new or changed: save to seen_appointments + outbox
+ * → publish AppointmentEvent to RabbitMQ exchange
  */
 @Component
 public class OpenMrsAppointmentPoller {
 
     private static final Logger log = LoggerFactory.getLogger(OpenMrsAppointmentPoller.class);
 
-    private static final String EXCHANGE  = "openmrs.events";
-    private static final int    CIRCUIT_OPEN_THRESHOLD = 5;
-    private static final long   CIRCUIT_OPEN_WAIT_MS   = 120_000; // 2 min
+    private static final String EXCHANGE = "openmrs.events";
+    private static final int CIRCUIT_OPEN_THRESHOLD = 5;
+    private static final long CIRCUIT_OPEN_WAIT_MS = 120_000; // 2 min
 
-    /** How far ahead to search for appointments (hours). */
-    private static final int POLL_WINDOW_HOURS = 48;
+    /**
+     * How far ahead to search for appointments (hours).
+     * 30 days — ensures patients get a confirmation immediately when
+     * an appointment is created, not only 48h before it occurs.
+     */
+    private static final int POLL_WINDOW_HOURS = 720;
 
-    private final RestTemplate         restTemplate;
-    private final RabbitTemplate       rabbitTemplate;
-    private final JdbcTemplate         jdbc;
-    private final OutboxService        outboxService;
+    private final RestTemplate restTemplate;
+    private final RabbitTemplate rabbitTemplate;
+    private final JdbcTemplate jdbc;
+    private final OutboxService outboxService;
     private final PersonContactService personContactService;
-    private final String               openmrsBaseUrl;
+    private final String openmrsBaseUrl;
 
     // Circuit breaker state (in-memory — resets on restart, which is fine)
-    private int  consecutiveFailures = 0;
-    private long circuitOpenedAt     = 0;
+    private int consecutiveFailures = 0;
+    private long circuitOpenedAt = 0;
 
     public OpenMrsAppointmentPoller(
             @Qualifier("openmrsRestTemplate") RestTemplate restTemplate,
@@ -87,20 +91,19 @@ public class OpenMrsAppointmentPoller {
             OutboxService outboxService,
             PersonContactService personContactService,
             @Value("${openmrs.base-url:http://gateway/openmrs}") String openmrsBaseUrl) {
-        this.restTemplate         = restTemplate;
-        this.rabbitTemplate       = rabbitTemplate;
-        this.jdbc                 = jdbc;
-        this.outboxService        = outboxService;
+        this.restTemplate = restTemplate;
+        this.rabbitTemplate = rabbitTemplate;
+        this.jdbc = jdbc;
+        this.outboxService = outboxService;
         this.personContactService = personContactService;
-        this.openmrsBaseUrl       = openmrsBaseUrl;
+        this.openmrsBaseUrl = openmrsBaseUrl;
     }
 
     /**
      * Main polling loop. Runs every 2 minutes by default.
      * Adjust via: poller.interval.fixed-delay-ms=120000
      */
-    @Scheduled(fixedDelayString = "${poller.interval.fixed-delay-ms:120000}",
-               initialDelayString = "${poller.interval.initial-delay-ms:30000}")
+    @Scheduled(fixedDelayString = "${poller.interval.fixed-delay-ms:120000}", initialDelayString = "${poller.interval.initial-delay-ms:30000}")
     public void poll() {
 
         // ── Circuit breaker check ─────────────────────────────────────────
@@ -141,7 +144,7 @@ public class OpenMrsAppointmentPoller {
         for (RestAppointment apt : appointments) {
             try {
                 String currentStatus = apt.getStatus();
-                String seenStatus    = getSeenStatus(apt.getUuid());
+                String seenStatus = getSeenStatus(apt.getUuid());
 
                 // Skip if already seen with the same status
                 if (seenStatus != null && seenStatus.equalsIgnoreCase(currentStatus)) {
@@ -180,8 +183,7 @@ public class OpenMrsAppointmentPoller {
 
         Map<String, String> body = Map.of(
                 "startDate", fmt.format(from),
-                "endDate",   fmt.format(to)
-        );
+                "endDate", fmt.format(to));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -189,7 +191,8 @@ public class OpenMrsAppointmentPoller {
         try {
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                     url, HttpMethod.POST, new HttpEntity<>(body, headers),
-                    new org.springframework.core.ParameterizedTypeReference<>() {});
+                    new org.springframework.core.ParameterizedTypeReference<>() {
+                    });
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 throw new RuntimeException("OpenMRS returned HTTP " + response.getStatusCode());
@@ -255,22 +258,24 @@ public class OpenMrsAppointmentPoller {
     }
 
     private AppointmentEvent.EventType statusToEventType(String current, String previous) {
-        if (current == null) return AppointmentEvent.EventType.SCHEDULED;
+        if (current == null)
+            return AppointmentEvent.EventType.SCHEDULED;
         return switch (current.toLowerCase()) {
             case "cancelled", "missed" -> AppointmentEvent.EventType.CANCELLED;
-            case "scheduled"           -> previous == null
-                                            ? AppointmentEvent.EventType.SCHEDULED
-                                            : AppointmentEvent.EventType.UPDATED;
-            default                    -> AppointmentEvent.EventType.UPDATED;
+            case "scheduled" -> previous == null
+                    ? AppointmentEvent.EventType.SCHEDULED
+                    : AppointmentEvent.EventType.UPDATED;
+            default -> AppointmentEvent.EventType.UPDATED;
         };
     }
 
     private String resolveRoutingKey(String status) {
-        if (status == null) return "appointment.scheduled";
+        if (status == null)
+            return "appointment.scheduled";
         return switch (status.toLowerCase()) {
             case "cancelled", "missed" -> "appointment.cancelled";
-            case "scheduled"           -> "appointment.scheduled";
-            default                    -> "appointment.updated";
+            case "scheduled" -> "appointment.scheduled";
+            default -> "appointment.updated";
         };
     }
 
@@ -289,17 +294,18 @@ public class OpenMrsAppointmentPoller {
 
     private void markSeen(String appointmentUuid, String status) {
         jdbc.update("""
-            INSERT INTO seen_appointments (appointment_uuid, openmrs_status, queued_at)
-            VALUES (?, ?, now())
-            ON CONFLICT (appointment_uuid) DO UPDATE
-              SET openmrs_status = EXCLUDED.openmrs_status, queued_at = now()
-            """, appointmentUuid, status);
+                INSERT INTO seen_appointments (appointment_uuid, openmrs_status, queued_at)
+                VALUES (?, ?, now())
+                ON CONFLICT (appointment_uuid) DO UPDATE
+                  SET openmrs_status = EXCLUDED.openmrs_status, queued_at = now()
+                """, appointmentUuid, status);
     }
 
     // ── Circuit breaker ──────────────────────────────────────────────────────
 
     private boolean isCircuitOpen() {
-        if (consecutiveFailures < CIRCUIT_OPEN_THRESHOLD) return false;
+        if (consecutiveFailures < CIRCUIT_OPEN_THRESHOLD)
+            return false;
         long elapsed = System.currentTimeMillis() - circuitOpenedAt;
         if (elapsed >= CIRCUIT_OPEN_WAIT_MS) {
             log.info("Circuit half-open — attempting recovery poll");
@@ -313,27 +319,68 @@ public class OpenMrsAppointmentPoller {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RestAppointment {
-        private String  uuid;
-        private String  status;
+        private String uuid;
+        private String status;
         private Instant startDateTime;
-        private String  patientUuid;
-        private String  patientName;
-        private String  locationName;
-        private String  comments;
+        private String patientUuid;
+        private String patientName;
+        private String locationName;
+        private String comments;
 
-        public String  getUuid()          { return uuid; }
-        public void    setUuid(String v)  { this.uuid = v; }
-        public String  getStatus()        { return status; }
-        public void    setStatus(String v){ this.status = v; }
-        public Instant getStartDateTime() { return startDateTime; }
-        public void    setStartDateTime(Instant v) { this.startDateTime = v; }
-        public String  getPatientUuid()   { return patientUuid; }
-        public void    setPatientUuid(String v) { this.patientUuid = v; }
-        public String  getPatientName()   { return patientName; }
-        public void    setPatientName(String v) { this.patientName = v; }
-        public String  getLocationName()  { return locationName; }
-        public void    setLocationName(String v) { this.locationName = v; }
-        public String  getComments()      { return comments; }
-        public void    setComments(String v) { this.comments = v; }
+        public String getUuid() {
+            return uuid;
+        }
+
+        public void setUuid(String v) {
+            this.uuid = v;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String v) {
+            this.status = v;
+        }
+
+        public Instant getStartDateTime() {
+            return startDateTime;
+        }
+
+        public void setStartDateTime(Instant v) {
+            this.startDateTime = v;
+        }
+
+        public String getPatientUuid() {
+            return patientUuid;
+        }
+
+        public void setPatientUuid(String v) {
+            this.patientUuid = v;
+        }
+
+        public String getPatientName() {
+            return patientName;
+        }
+
+        public void setPatientName(String v) {
+            this.patientName = v;
+        }
+
+        public String getLocationName() {
+            return locationName;
+        }
+
+        public void setLocationName(String v) {
+            this.locationName = v;
+        }
+
+        public String getComments() {
+            return comments;
+        }
+
+        public void setComments(String v) {
+            this.comments = v;
+        }
     }
 }
