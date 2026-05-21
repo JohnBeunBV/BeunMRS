@@ -32,6 +32,8 @@ public class AppointmentEvent {
     private String locationName;
     /** Optional free-text instructions from OpenMRS (e.g. "nuchter komen"). */
     private String comments;
+    /** IANA timezone of the tenant, propagated by NotificationDispatcher (e.g. "Europe/Amsterdam"). */
+    private String timezone;
     private EventType eventType;
     private Instant occurredAt;
 
@@ -66,6 +68,9 @@ public class AppointmentEvent {
 
     public String getComments() { return comments; }
     public void setComments(String comments) { this.comments = comments; }
+
+    public String getTimezone() { return timezone; }
+    public void setTimezone(String timezone) { this.timezone = timezone; }
 
     public EventType getEventType() { return eventType; }
     public void setEventType(EventType eventType) { this.eventType = eventType; }

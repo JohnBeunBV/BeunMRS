@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     provider_name        TEXT        NOT NULL CHECK (provider_name IN ('SwiftSend','SecurePost','LegacyLink','AsyncFlow')),
     provider_api_key_enc TEXT        NOT NULL,
     provider_extra_enc   TEXT,
+    timezone             TEXT        NOT NULL DEFAULT 'Europe/Amsterdam',
     active               BOOLEAN     NOT NULL DEFAULT true,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -111,3 +112,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sched_notif_pending_unique
 CREATE INDEX IF NOT EXISTS idx_sched_notif_send_at
     ON scheduled_notifications (send_at)
     WHERE status = 'pending';
+
+-- ── Notification audit log (no PII — 1-year meta-info for invoice reconciliation) ──
+-- Created by DataRetentionJob before 14-day PII cleanup.
+-- Contains only: appointment_uuid, event_type, provider, status, sent_at — no phone/email/name.
+CREATE TABLE IF NOT EXISTS notification_audit_log (
+    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id        UUID        NOT NULL REFERENCES tenants(id),
+    appointment_uuid TEXT        NOT NULL,
+    event_type       TEXT        NOT NULL,
+    provider         TEXT        NOT NULL,
+    status           TEXT        NOT NULL,
+    sent_at          TIMESTAMPTZ,
+    archived_from_id UUID        NOT NULL,
+    archived_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_tenant
+    ON notification_audit_log (tenant_id, sent_at DESC);

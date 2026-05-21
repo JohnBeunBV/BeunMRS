@@ -3,6 +3,7 @@ package com.openmrs.notification.tenant;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.ZoneId;
 import java.util.Set;
 
 /**
@@ -46,6 +47,14 @@ public class TenantRegistrationController {
         }
         if (req.providerApiKey() == null || req.providerApiKey().isBlank()) {
             return ResponseEntity.badRequest().body(error("providerApiKey is required"));
+        }
+        if (req.timezone() != null && !req.timezone().isBlank()) {
+            try {
+                ZoneId.of(req.timezone());
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body(error(
+                        "timezone is not a valid IANA timezone identifier (e.g. 'Europe/Amsterdam')"));
+            }
         }
 
         try {

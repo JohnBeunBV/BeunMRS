@@ -47,8 +47,9 @@ public class NotificationDispatcher {
             return;
         }
 
-        // Propagate tenantId into the event so outbox/log can reference it
+        // Propagate tenantId and timezone into the event (NFR-13: per-tenant timezone)
         event.setTenantId(tenant.getId());
+        event.setTimezone(tenant.getTimezone());
 
         String targetName = tenant.getProviderName();
         ProviderCredentials credentials = new ProviderCredentials(

@@ -8,38 +8,56 @@ import java.util.Locale;
 /**
  * Shared utilities for all notification provider adapters.
  *
- * formatTime      — converts an Instant to a human-readable Dutch string
- *                   in the Europe/Amsterdam timezone (incl. DST handling).
+ * formatTime      — converts an Instant to a human-readable Dutch string,
+ *                   using the tenant-configured IANA timezone (NFR-13).
  * mask            — masks phone numbers and e-mail addresses for safe logging.
  * commentsSuffix  — formats the optional OpenMRS appointment comments field
  *                   as an appendable sentence.
- * location        — returns " bij {locationName}" or "" when absent.
+ * locationSuffix  — returns " bij {locationName}" or "" when absent.
  */
 public final class MessageHelper {
 
-    /** Configured timezone for all patient-facing timestamps. */
-    private static final ZoneId ZONE = ZoneId.of("Europe/Amsterdam");
+    /** Fallback timezone when none is configured for the tenant. */
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Europe/Amsterdam");
 
-    /**
-     * "maandag 24 januari 2026 om 14:30"
-     */
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter
-            .ofPattern("EEEE d MMMM yyyy 'om' HH:mm", Locale.of("nl", "NL"))
-            .withZone(ZONE);
+    private static final Locale NL = Locale.of("nl", "NL");
 
     private MessageHelper() { /* utility class */ }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Formats an Instant for display in patient messages.
-     * Returns "onbekend tijdstip" for null inputs.
+     * Formats an Instant using the tenant's IANA timezone (from AppointmentEvent.getTimezone()).
+     * Falls back to Europe/Amsterdam when timezone is null or invalid.
      *
      * Example output: "maandag 24 januari 2026 om 14:30"
      */
-    public static String formatTime(Instant instant) {
+    public static String formatTime(Instant instant, String timezone) {
         if (instant == null) return "onbekend tijdstip";
-        return FORMATTER.format(instant);
+        ZoneId zone = parseZone(timezone);
+        return DateTimeFormatter
+                .ofPattern("EEEE d MMMM yyyy 'om' HH:mm", NL)
+                .withZone(zone)
+                .format(instant);
+    }
+
+    /**
+     * Convenience overload using the Europe/Amsterdam fallback.
+     * Prefer {@link #formatTime(Instant, String)} when a tenant timezone is available.
+     */
+    public static String formatTime(Instant instant) {
+        return formatTime(instant, null);
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private static ZoneId parseZone(String timezone) {
+        if (timezone == null || timezone.isBlank()) return DEFAULT_ZONE;
+        try {
+            return ZoneId.of(timezone);
+        } catch (Exception e) {
+            return DEFAULT_ZONE;
+        }
     }
 
     /**

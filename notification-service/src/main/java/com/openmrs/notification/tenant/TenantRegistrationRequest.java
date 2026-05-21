@@ -8,5 +8,7 @@ public record TenantRegistrationRequest(
         String openmrsPassword,
         String providerName,
         String providerApiKey,
-        String providerExtra
+        String providerExtra,
+        /** IANA timezone, e.g. "Europe/Amsterdam". Defaults to "Europe/Amsterdam" when omitted. */
+        String timezone
 ) {}

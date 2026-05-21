@@ -16,6 +16,8 @@ public class Tenant {
     private String  providerName;
     private String  providerApiKeyEnc;
     private String  providerExtraEnc;
+    /** IANA timezone identifier, e.g. "Europe/Amsterdam" or "Asia/Shanghai". */
+    private String  timezone;
     private boolean active;
     private Instant createdAt;
 
@@ -51,6 +53,9 @@ public class Tenant {
 
     public String  getProviderExtraEnc()                             { return providerExtraEnc; }
     public void    setProviderExtraEnc(String providerExtraEnc)     { this.providerExtraEnc = providerExtraEnc; }
+
+    public String  getTimezone()                     { return timezone; }
+    public void    setTimezone(String timezone)      { this.timezone = timezone; }
 
     public boolean isActive()                  { return active; }
     public void    setActive(boolean active)   { this.active = active; }

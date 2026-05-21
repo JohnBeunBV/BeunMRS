@@ -58,17 +58,19 @@ public class TenantService {
         String passwordEnc  = aes.encrypt(req.openmrsPassword());
         String provKeyEnc   = aes.encrypt(req.providerApiKey());
         String provExtraEnc = req.providerExtra() != null ? aes.encrypt(req.providerExtra()) : null;
+        String timezone     = (req.timezone() != null && !req.timezone().isBlank())
+                              ? req.timezone() : "Europe/Amsterdam";
         UUID   id           = UUID.randomUUID();
 
         jdbc.update("""
             INSERT INTO tenants (id, slug, display_name, api_key_hash, api_key_enc,
                 openmrs_host, openmrs_user, openmrs_password_enc,
-                provider_name, provider_api_key_enc, provider_extra_enc, active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, now())
+                provider_name, provider_api_key_enc, provider_extra_enc, timezone, active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, now())
             """,
             id, req.slug(), req.displayName(), apiKeyHash, apiKeyEnc,
             req.openmrsHost(), req.openmrsUser(), passwordEnc,
-            req.providerName(), provKeyEnc, provExtraEnc
+            req.providerName(), provKeyEnc, provExtraEnc, timezone
         );
 
         log.info("Tenant registered: slug={} provider={}", req.slug(), req.providerName());
@@ -109,6 +111,8 @@ public class TenantService {
         t.setProviderName((String) row.get("provider_name"));
         t.setProviderApiKeyEnc((String) row.get("provider_api_key_enc"));
         t.setProviderExtraEnc((String) row.get("provider_extra_enc"));
+        String tz = (String) row.get("timezone");
+        t.setTimezone(tz != null ? tz : "Europe/Amsterdam");
         t.setActive(Boolean.TRUE.equals(row.get("active")));
         Timestamp ts = (Timestamp) row.get("created_at");
         if (ts != null) t.setCreatedAt(ts.toInstant());

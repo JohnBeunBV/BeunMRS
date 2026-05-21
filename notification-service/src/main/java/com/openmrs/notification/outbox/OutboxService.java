@@ -2,6 +2,7 @@ package com.openmrs.notification.outbox;
 
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationResult;
+import com.openmrs.notification.util.MessageHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -84,6 +85,13 @@ public class OutboxService {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
+    /**
+     * Builds the JSONB payload stored in notification_log and outbox_events.
+     *
+     * NFR-5: phone and e-mail are masked before storage so log files never
+     * contain unencrypted personal data (e.g. "061****678", "b****@example.com").
+     * The actual contact details are only held in memory during the send attempt.
+     */
     private String buildPayloadJson(AppointmentEvent event, NotificationResult result) {
         return String.format(
             "{\"appointmentUuid\":\"%s\",\"patientUuid\":\"%s\",\"eventType\":\"%s\"" +
@@ -91,8 +99,8 @@ public class OutboxService {
             nvl(event.getAppointmentUuid()),
             nvl(event.getPatientUuid()),
             event.getEventType(),
-            nvl(event.getPatientPhone()),
-            nvl(event.getPatientEmail()),
+            MessageHelper.mask(event.getPatientPhone()),
+            MessageHelper.mask(event.getPatientEmail()),
             result != null && result.getProviderMessageId() != null ? result.getProviderMessageId() : ""
         );
     }

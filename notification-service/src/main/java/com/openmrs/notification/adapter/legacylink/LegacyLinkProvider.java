@@ -85,7 +85,7 @@ public class LegacyLinkProvider implements NotificationProvider {
         String recipient = event.getPatientPhone() != null
                 ? event.getPatientPhone()
                 : (event.getPatientEmail() != null ? event.getPatientEmail() : "unknown");
-        String time     = MessageHelper.formatTime(event.getAppointmentTime());
+        String time     = MessageHelper.formatTime(event.getAppointmentTime(), event.getTimezone());
         String loc      = MessageHelper.locationSuffix(event.getLocationName());
         String comments = MessageHelper.commentsSuffix(event.getComments());
         String message  = switch (event.getEventType()) {

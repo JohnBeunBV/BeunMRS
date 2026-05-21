@@ -71,7 +71,7 @@ public class MockMessagingProvider implements NotificationProvider {
 
     private String buildMessage(AppointmentEvent event) {
         String name     = event.getPatientName() != null ? event.getPatientName() : "Patient";
-        String time     = MessageHelper.formatTime(event.getAppointmentTime());
+        String time     = MessageHelper.formatTime(event.getAppointmentTime(), event.getTimezone());
         String loc      = MessageHelper.locationSuffix(event.getLocationName());
         String comments = MessageHelper.commentsSuffix(event.getComments());
         return switch (event.getEventType()) {
