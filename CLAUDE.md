@@ -403,10 +403,172 @@ docker compose up -d
 
 ---
 
-### ✅ Fase 7 — Eindcontrole & oplevering _(1 uur)_
+### ⚪ Fase 9 — Multi-tenant SaaS registratie & configuratie _(8–14 uur)_
+
+> Maakt de module een echte SaaS: elke tenant (ziekenhuis) heeft een eigen OpenMRS-instantie,
+> eigen messaging provider en eigen API-sleutels. Zonder dit draaien alle tenants op dezelfde config.
+
+**Architectuurkeuze:** Per-organization provider config (niet per-location). Elke ziekenhuis-organisatie kiest
+één provider (bijv. SwiftSend) met één set API-keys. Poller haalt ALLe appointments op (geen location-filter);
+dispatcher stuurt naar de ene provider van die organisatie.
+
+#### 9a. Tenant datamodel — `00_schema.sql` uitbreiden
+
+- [ ] Nieuwe tabel `tenants` met velden:
+  - `id UUID PRIMARY KEY`
+  - `slug TEXT UNIQUE` (bijv. "amc", "lumc" — voor URLs)
+  - `display_name TEXT` (bijv. "Amsterdam UMC")
+  - `api_key TEXT UNIQUE` (gegenereerde SaaS-sleutel, AES-256 encrypted in DB)
+  - `openmrs_host TEXT` (https://openmrs.ziekenhuis.nl)
+  - `openmrs_user TEXT` + `openmrs_password_enc TEXT` (AES-256 encrypted)
+  - `provider_name TEXT CHECK IN ('SwiftSend','SecurePost','LegacyLink','AsyncFlow')`
+  - `provider_api_key_enc TEXT` (AES-256 encrypted)
+  - `provider_extra_enc TEXT` (voor JWT-secrets, HMAC-sleutels, client-ID's — optioneel)
+  - `active BOOLEAN DEFAULT true`
+  - `created_at TIMESTAMPTZ`
+
+- [ ] Bestaande tabellen updaten: voeg `tenant_id UUID NOT NULL REFERENCES tenants(id)` toe aan:
+  - `outbox_events`
+  - `notification_log`
+  - `sync_watermarks`
+  - `seen_appointments`
+  - `scheduled_notifications`
+  - `async_flow_commands`
+
+- [ ] Alle bestaande indices aanpassen; voeg where-clause toe: `WHERE tenant_id = ...` (scoped queries)
+
+---
+
+#### 9b. Registratie-endpoint (self-service onboarding)
+
+Nieuwe klasse `registration/TenantRegistrationController.java`:
+
+- [ ] `POST /api/register` accepteert JSON:
+  ```json
+  {
+    "displayName": "Amsterdam UMC",
+    "slug": "amc",
+    "openmrsHost": "https://openmrs.amc.nl",
+    "openmrsUser": "admin",
+    "openmrsPassword": "...",
+    "providerName": "SwiftSend",
+    "providerApiKey": "sk-swiftsend-...",
+    "providerExtra": ""
+  }
+  ```
+
+- [ ] Validaties:
+  - `slug`: alfanumeriek + uniek
+  - `openmrsHost`: bereikbaar (ping `/ws/rest/v1/info`)
+  - `providerName`: één van vier
+  - Wachtwoorden/sleutels: AES-256 encrypted vóór opslag (key via `DB_ENCRYPTION_KEY` env var)
+
+- [ ] Response: `{ tenantId: "uuid", apiKey: "saas-key-xyz" }`
+
+- [ ] Logging: `TenantCreated` event naar audit log (geen credentials)
+
+---
+
+#### 9c. SaaS-authenticatie — tenant resolven via API key
+
+Nieuwe klasse `security/TenantApiKeyFilter.java` (extends `OncePerRequestFilter`):
+
+- [ ] Leest `X-API-Key` header uit request
+- [ ] Zoekt tenant op in DB: `SELECT * FROM tenants WHERE api_key = ?`
+- [ ] Zet `TenantContext.set(tenant)` (ThreadLocal) voor rest van request-lifecycle
+- [ ] Geeft `401 Unauthorized` als sleutel ontbreekt of onbekend
+- [ ] Registreer filter in `WebSecurityConfig` voor `/api/**` (alles behalve `/api/register`)
+
+---
+
+#### 9d. TenantContext doortrekken
+
+Update bestaande klassen om `TenantContext.get()` te gebruiken:
+
+- [ ] **OpenMrsAppointmentPoller:**
+  - In `poll()`: iterate over alle actieve tenants (query `SELECT * FROM tenants WHERE active = true`)
+  - Per tenant: zet `TenantContext.set(tenant)`, fetch appointments via `tenant.openmrsHost` + credentials
+  - Watermark-query scoped op `tenant_id`
+
+- [ ] **AppointmentReconciler:** dezelfde aanpak
+
+- [ ] **NotificationDispatcher:**
+  - Krijgt `AppointmentEvent` met `tenant_id`
+  - Leest `tenant.provider_name` + `tenant.provider_api_key_enc`
+  - Decrypts sleutel, stuurt naar ÉÉN provider (niet fan-out)
+  - `outbox_events.tenant_id` + `notification_log.tenant_id` automatisch gezet
+
+- [ ] **AppConfig:** `openmrsRestTemplate` leest host + credentials uit `TenantContext.get().openmrsHost` dynamisch (geen hardcoded `openmrs.base-url` meer)
+
+---
+
+#### 9e. Provider registry per tenant
+
+Update `NotificationDispatcher`:
+
+- [ ] In plaats van `@Autowired List<NotificationProvider> providers`, injecteer de één provider op basis van tenant:
+  ```java
+  Tenant tenant = TenantContext.get();
+  NotificationProvider provider = providerRegistry.get(tenant.getProviderName());
+  String decryptedKey = decrypt(tenant.getProviderApiKeyEnc());
+  provider.send(event, decryptedKey);
+  ```
+
+---
+
+#### 9f. Tenant-admin endpoint (operationeel beheer)
+
+Optioneel maar handig:
+
+- [ ] `GET /api/admin/tenants` → lijst alle tenants (beveiligd met master key `SAAS_ADMIN_KEY`)
+- [ ] `PUT /api/admin/tenants/{id}` → provider/credentials bijwerken
+- [ ] `DELETE /api/admin/tenants/{id}` → soft delete (`active = false`)
+- [ ] `GET /api/admin/tenants/{id}/stats` → messages sent, errors, last poll time
+
+Master-sleutel via `SAAS_ADMIN_KEY` env var (nooit in code).
+
+---
+
+#### 9g. Verificatie
+
+- [ ] Twee tenants registreren (bijv. `amc` → SwiftSend, `lumc` → SecurePost)
+- [ ] Afspraak in AMC-OpenMRS → notificatie via SwiftSend, `tenant_id = amc-uuid` in DB
+- [ ] Afspraak in LUMC-OpenMRS → notificatie via SecurePost, `tenant_id = lumc-uuid` in DB
+- [ ] Ongeldige API key → `401 Unauthorized`
+- [ ] `notification_log` bevat correcte `tenant_id` per notificatie
+- [ ] Admin endpoint: kan tenant disablen, stats zien
+
+---
+
+### ✅ Fase 7 — Eindcontrole & oplevering _(1.5 uur)_
+
+#### Single-tenant verificatie (Fase 1-8)
 
 - [ ] **7a.** `docker compose down -v && docker compose up -d` — volledige stack van nul starten
 - [ ] **7b.** Afspraak aanmaken in OpenMRS → volledige flow volgen in Grafana logs
 - [ ] **7c.** Afspraak annuleren → verifiëren dat geplande reminders status 'cancelled' krijgen
-- [ ] **7d.** `CLAUDE.md` bijwerken — voltooide fasen markeren
-- [ ] **7e.** `README.md` controleren op actualiteit
+
+#### Multi-tenant verificatie (Fase 9)
+
+- [ ] **7d.** Twee tenants registreren via `POST /api/register`:
+  - Tenant 1: "Amsterdam UMC" → SwiftSend
+  - Tenant 2: "Leiden UMC" → SecurePost
+  
+- [ ] **7e.** Per tenant: afspraak aanmaken in hun OpenMRS-instantie → verifiëren:
+  - Amsterdam: notificatie via SwiftSend ✓
+  - Leiden: notificatie via SecurePost ✓
+  - `tenant_id` correct in `notification_log`
+
+- [ ] **7f.** Tenants isolation: 
+  - Tenant A met ongeldig API key → `401 Unauthorized`
+  - Tenant A mag niet tenant B's data zien (watermarks, logs)
+
+#### Documentatie & sluiting
+
+- [ ] **7g.** `CLAUDE.md` bijwerken — voltooide fasen (1-9) markeren met checkmarks
+- [ ] **7h.** `README.md` + `docs/` bijwerken:
+  - Ziekenhuis-beheerders moeten kunnen: registreren, configureren provider, monitoren
+  - DevOps instructies voor draai multi-tenant setup
+  - ADRs voor architectuurkeuzes (tenant model, provider routing, encryption)
+
+- [ ] **7i.** Finale logs/screenshots: multi-tenant flow in Grafana
