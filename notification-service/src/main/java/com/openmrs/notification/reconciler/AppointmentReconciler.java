@@ -1,12 +1,14 @@
 package com.openmrs.notification.reconciler;
 
+import com.openmrs.notification.config.RestTemplateFactory;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.service.NotificationDispatcher;
 import com.openmrs.notification.service.PersonContactService;
+import com.openmrs.notification.tenant.Tenant;
+import com.openmrs.notification.tenant.TenantContext;
+import com.openmrs.notification.tenant.TenantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,19 +19,11 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Periodically polls the OpenMRS REST API for appointments updated
- * since the last-seen watermark. This is the catch-up mechanism that
- * guarantees no appointment event is permanently missed — even if the
- * RabbitMQ connection was down, OpenMRS crashed, or this service was
- * restarted.
- *
- * Flow:
- *   1. Read watermark from sync_watermarks table.
- *   2. Query OpenMRS /ws/rest/v1/appointment?lastUpdated={watermark}.
- *   3. For each returned appointment not already processed, dispatch.
- *   4. Advance watermark to now.
+ * Backup reconciliator — catch-up mechanism for missed events.
+ * Runs every 5 minutes for every active tenant.
  */
 @Component
 public class AppointmentReconciler {
@@ -37,132 +31,132 @@ public class AppointmentReconciler {
     private static final Logger log = LoggerFactory.getLogger(AppointmentReconciler.class);
     private static final String RESOURCE = "appointment";
 
-    private final RestTemplate         restTemplate;
+    private final RestTemplateFactory  restTemplateFactory;
     private final JdbcTemplate         jdbc;
     private final NotificationDispatcher dispatcher;
-    private final PersonContactService personContactService;
-    private final String               openmrsBaseUrl;
+    private final PersonContactService  personContactService;
+    private final TenantService         tenantService;
 
     public AppointmentReconciler(
-            @Qualifier("openmrsRestTemplate") RestTemplate restTemplate,
+            RestTemplateFactory restTemplateFactory,
             JdbcTemplate jdbc,
             NotificationDispatcher dispatcher,
             PersonContactService personContactService,
-            @Value("${openmrs.base-url:http://gateway/openmrs}") String openmrsBaseUrl) {
-        this.restTemplate         = restTemplate;
-        this.jdbc                 = jdbc;
-        this.dispatcher           = dispatcher;
-        this.personContactService = personContactService;
-        this.openmrsBaseUrl       = openmrsBaseUrl;
+            TenantService tenantService) {
+        this.restTemplateFactory  = restTemplateFactory;
+        this.jdbc                  = jdbc;
+        this.dispatcher            = dispatcher;
+        this.personContactService  = personContactService;
+        this.tenantService         = tenantService;
     }
 
-    /**
-     * Runs every 5 minutes. Adjust via application.properties:
-     *   reconciler.poll.fixed-delay-ms=300000
-     */
     @Scheduled(fixedDelayString = "${reconciler.poll.fixed-delay-ms:300000}",
                initialDelayString = "${reconciler.poll.initial-delay-ms:60000}")
     public void reconcile() {
-        Instant since = readWatermark();
-        log.info("Reconciler running — checking appointments since {}", since);
-
-        try {
-            List<AppointmentEvent> events = fetchFromOpenMRS(since);
-            log.info("Reconciler found {} appointment(s) since {}", events.size(), since);
-
-            for (AppointmentEvent event : events) {
-                if (!alreadyProcessed(event)) {
-                    dispatcher.dispatch(event);
-                }
+        List<Tenant> tenants = tenantService.getActiveTenants();
+        if (tenants.isEmpty()) {
+            log.debug("Reconciler: no active tenants — skipping");
+            return;
+        }
+        for (Tenant tenant : tenants) {
+            TenantContext.set(tenant);
+            try {
+                reconcileForTenant(tenant);
+            } finally {
+                TenantContext.clear();
             }
-
-            advanceWatermark(Instant.now());
-
-        } catch (Exception ex) {
-            log.error("Reconciler poll failed — will retry at next interval", ex);
-            // Watermark not advanced — next run will re-check the same window
         }
     }
 
-    // ── Internal helpers ─────────────────────────────────────────────────
+    private void reconcileForTenant(Tenant tenant) {
+        Instant since = readWatermark(tenant.getId());
+        log.info("Reconciler running for tenant={} since {}", tenant.getSlug(), since);
 
-    private Instant readWatermark() {
+        try {
+            String password = tenantService.decryptOpenmrsPassword(tenant);
+            RestTemplate rt = restTemplateFactory.buildForTenant(tenant, password);
+
+            List<AppointmentEvent> events = fetchFromOpenMRS(rt, tenant, since);
+            log.info("Reconciler found {} appointment(s) for tenant={}", events.size(), tenant.getSlug());
+
+            for (AppointmentEvent event : events) {
+                if (!alreadyProcessed(event, tenant.getId())) {
+                    dispatcher.dispatch(event);
+                }
+            }
+            advanceWatermark(tenant.getId(), Instant.now());
+
+        } catch (Exception ex) {
+            log.error("Reconciler poll failed for tenant={} — will retry at next interval",
+                    tenant.getSlug(), ex);
+        }
+    }
+
+    // ── Watermark ─────────────────────────────────────────────────────────────
+
+    private Instant readWatermark(UUID tenantId) {
         try {
             String cursor = jdbc.queryForObject(
-                    "SELECT last_cursor FROM sync_watermarks WHERE resource_type = ?",
-                    String.class, RESOURCE);
+                    "SELECT last_cursor FROM sync_watermarks WHERE resource_type = ? AND tenant_id = ?",
+                    String.class, RESOURCE, tenantId);
             return cursor != null ? Instant.parse(cursor) : Instant.now().minus(1, ChronoUnit.HOURS);
         } catch (Exception e) {
             return Instant.now().minus(1, ChronoUnit.HOURS);
         }
     }
 
-    private void advanceWatermark(Instant now) {
+    private void advanceWatermark(UUID tenantId, Instant now) {
         jdbc.update("""
-            INSERT INTO sync_watermarks (resource_type, last_updated, last_cursor)
-            VALUES (?, now(), ?)
-            ON CONFLICT (resource_type) DO UPDATE
+            INSERT INTO sync_watermarks (resource_type, tenant_id, last_updated, last_cursor)
+            VALUES (?, ?, now(), ?)
+            ON CONFLICT (resource_type, tenant_id) DO UPDATE
             SET last_updated = now(), last_cursor = EXCLUDED.last_cursor
-            """, RESOURCE, now.toString());
+            """, RESOURCE, tenantId, now.toString());
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private List<AppointmentEvent> fetchFromOpenMRS(Instant since) {
-        // OpenMRS REST v1 — Appointment Scheduling module endpoint
-        String url = openmrsBaseUrl + "/ws/rest/v1/appointment?lastUpdated=" + since.toString() + "&v=full";
+    // ── OpenMRS fetch ──────────────────────────────────────────────────────────
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<AppointmentEvent> fetchFromOpenMRS(RestTemplate rt, Tenant tenant, Instant since) {
+        String url = tenant.getOpenmrsHost()
+                + "/ws/rest/v1/appointment?lastUpdated=" + since + "&v=full";
         try {
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                return List.of();
-            }
+            ResponseEntity<Map> response = rt.getForEntity(url, Map.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) return List.of();
+
             List<Map<String, Object>> results =
                     (List<Map<String, Object>>) response.getBody().getOrDefault("results", List.of());
+            return results.stream().map(r -> mapToEvent(r, tenant)).toList();
 
-            return results.stream()
-                    .map(this::mapToEvent)
-                    .toList();
         } catch (Exception ex) {
-            log.warn("OpenMRS poll failed: {}", ex.getMessage());
+            log.warn("OpenMRS reconciler poll failed for tenant={}: {}", tenant.getSlug(), ex.getMessage());
             return List.of();
         }
     }
 
     @SuppressWarnings("unchecked")
-    private AppointmentEvent mapToEvent(Map<String, Object> raw) {
+    private AppointmentEvent mapToEvent(Map<String, Object> raw, Tenant tenant) {
         AppointmentEvent e = new AppointmentEvent();
+        e.setTenantId(tenant.getId());
         e.setAppointmentUuid((String) raw.get("uuid"));
         e.setOccurredAt(Instant.now());
-
-        // Map the actual OpenMRS status to our internal EventType
         e.setEventType(statusToEventType((String) raw.get("status")));
 
-        // Patient
         Map<String, Object> patient = (Map<String, Object>) raw.get("patient");
         if (patient != null) {
             e.setPatientUuid((String) patient.get("uuid"));
             e.setPatientName((String) patient.get("name"));
         }
-
-        // startDateTime is a Unix timestamp in milliseconds (same as the Poller)
         Object start = raw.get("startDateTime");
-        if (start instanceof Number) {
-            e.setAppointmentTime(Instant.ofEpochMilli(((Number) start).longValue()));
-        }
+        if (start instanceof Number) e.setAppointmentTime(Instant.ofEpochMilli(((Number) start).longValue()));
 
-        // Location
         Map<String, Object> location = (Map<String, Object>) raw.get("location");
-        if (location != null) {
-            e.setLocationName((String) location.get("name"));
-        }
+        if (location != null) e.setLocationName((String) location.get("name"));
 
-        // Fase 2: contactgegevens ophalen via GET /ws/rest/v1/person/{uuid}?v=full
         personContactService.enrichEvent(e);
-
         return e;
     }
 
-    /** Maps OpenMRS appointment status to internal EventType. */
     private AppointmentEvent.EventType statusToEventType(String status) {
         if (status == null) return AppointmentEvent.EventType.SCHEDULED;
         return switch (status.toLowerCase()) {
@@ -172,13 +166,11 @@ public class AppointmentReconciler {
         };
     }
 
-    private boolean alreadyProcessed(AppointmentEvent event) {
+    private boolean alreadyProcessed(AppointmentEvent event, UUID tenantId) {
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM notification_log WHERE event_type = ? AND payload::text LIKE ?",
-                Integer.class,
-                event.getEventType().name(),
-                "%" + event.getAppointmentUuid() + "%"
-        );
+                "SELECT COUNT(*) FROM notification_log WHERE tenant_id = ? AND event_type = ? AND payload::text LIKE ?",
+                Integer.class, tenantId, event.getEventType().name(),
+                "%" + event.getAppointmentUuid() + "%");
         return count != null && count > 0;
     }
 }

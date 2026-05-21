@@ -4,6 +4,8 @@ import com.openmrs.notification.adapter.NotificationProvider;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
+import com.openmrs.notification.model.ProviderCredentials;
+import com.openmrs.notification.util.MessageHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12,22 +14,15 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-import com.openmrs.notification.util.MessageHelper;
-
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.UUID;
 
 /**
- * LegacyLink — SOAP API with BASIC authentication.
+ * LegacyLink — SOAP API with Basic authentication.
  *
- * FakeComWorld exposes a SOAP endpoint with simulated delays of 100–3000 ms.
- * This adapter builds the SOAP envelope manually (no need for a full WSDL
- * client for a single operation) and parses the response with basic string ops
- * to avoid pulling in a heavy JAXB/CXF dependency.
- *
- * The adapter uses a dedicated RestTemplate with a longer read timeout (5s)
- * to account for LegacyLink's high simulated latency.
+ * credentials.apiKey()  = username
+ * credentials.extra()   = password
  */
 @Component
 public class LegacyLinkProvider implements NotificationProvider {
@@ -35,44 +30,41 @@ public class LegacyLinkProvider implements NotificationProvider {
     private static final Logger log = LoggerFactory.getLogger(LegacyLinkProvider.class);
 
     private final RestTemplate restTemplate;
-    private final String baseUrl;
-    private final String basicAuthHeader;
-    private final String studentGroup;
+    private final String       baseUrl;
+    private final String       studentGroup;
 
     public LegacyLinkProvider(
             @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
-            @Value("${provider.legacylink.username:legacylink-user}") String username,
-            @Value("${provider.legacylink.password:legacylink-password}") String password,
             @Value("${fakecomworld.student-group:group-1}") String studentGroup) {
-        this.restTemplate    = restTemplate;
-        this.baseUrl         = baseUrl;
-        this.studentGroup    = studentGroup;
-        this.basicAuthHeader = "Basic " + Base64.getEncoder()
-                .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+        this.restTemplate = restTemplate;
+        this.baseUrl      = baseUrl;
+        this.studentGroup = studentGroup;
     }
 
     @Override public NotificationChannel channel() { return NotificationChannel.SMS; }
     @Override public String providerName()          { return "LegacyLink"; }
 
     @Override
-    public NotificationResult send(AppointmentEvent event) {
+    public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
         try {
             String correlationId = UUID.randomUUID().toString();
             log.debug("[LegacyLink] Sturen naar {} — appointment={}",
                     MessageHelper.mask(event.getPatientPhone()), event.getAppointmentUuid());
-            String soapBody = buildSoapEnvelope(event, correlationId);
+
+            String basicAuth = "Basic " + Base64.getEncoder().encodeToString(
+                    (credentials.apiKey() + ":" + credentials.extra()).getBytes(StandardCharsets.UTF_8));
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.TEXT_XML);
-            headers.set("Authorization",    basicAuthHeader);
-            headers.set("SOAPAction",       "SendMessage");
-            headers.set("X-STUDENT-GROUP",  studentGroup);
+            headers.set("Authorization",   basicAuth);
+            headers.set("SOAPAction",      "SendMessage");
+            headers.set("X-STUDENT-GROUP", studentGroup);
 
             ResponseEntity<String> resp = restTemplate.exchange(
                     baseUrl + "/LegacyLink/SendSms",
                     HttpMethod.POST,
-                    new HttpEntity<>(soapBody, headers),
+                    new HttpEntity<>(buildSoapEnvelope(event, correlationId), headers),
                     String.class
             );
 
@@ -89,8 +81,6 @@ public class LegacyLinkProvider implements NotificationProvider {
         }
     }
 
-    // ── SOAP helpers ──────────────────────────────────────────────────────────
-
     private String buildSoapEnvelope(AppointmentEvent event, String correlationId) {
         String recipient = event.getPatientPhone() != null
                 ? event.getPatientPhone()
@@ -98,7 +88,7 @@ public class LegacyLinkProvider implements NotificationProvider {
         String time     = MessageHelper.formatTime(event.getAppointmentTime());
         String loc      = MessageHelper.locationSuffix(event.getLocationName());
         String comments = MessageHelper.commentsSuffix(event.getComments());
-        String message = switch (event.getEventType()) {
+        String message  = switch (event.getEventType()) {
             case SCHEDULED    -> String.format("Afspraak bevestigd op %s%s.%s", time, loc, comments);
             case UPDATED      -> String.format("Afspraak gewijzigd naar %s%s.%s", time, loc, comments);
             case CANCELLED    -> String.format("Uw afspraak op %s is geannuleerd.", time);
@@ -106,7 +96,6 @@ public class LegacyLinkProvider implements NotificationProvider {
             case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur (%s)%s.%s", time, loc, comments);
         };
 
-        // Geen SOAP envelope — FakeComWorld verwacht plain XML met dit namespace
         return """
             <?xml version="1.0" encoding="utf-8"?>
             <SendSmsRequest xmlns="http://legacylink.fakecomworld.com/v1">
@@ -118,7 +107,6 @@ public class LegacyLinkProvider implements NotificationProvider {
     }
 
     private String extractMessageId(String xmlResponse, String fallback) {
-        // LegacyLink antwoordt met <MessageReference>LGC-...</MessageReference>
         int start = xmlResponse.indexOf("<MessageReference>");
         int end   = xmlResponse.indexOf("</MessageReference>");
         if (start >= 0 && end > start) {

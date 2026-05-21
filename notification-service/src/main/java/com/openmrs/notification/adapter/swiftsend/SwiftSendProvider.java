@@ -4,6 +4,8 @@ import com.openmrs.notification.adapter.NotificationProvider;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
+import com.openmrs.notification.model.ProviderCredentials;
+import com.openmrs.notification.util.MessageHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,13 +15,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import com.openmrs.notification.util.MessageHelper;
-
 import java.util.Map;
 
 /**
- * SwiftSend — REST API authenticated with X-API-KEY header.
- * Handles rate limiting (429) and random fault injection from FakeComWorld.
+ * SwiftSend — SMS via REST API with X-API-KEY authentication.
+ * credentials.apiKey() = the SwiftSend API key for this tenant.
  */
 @Component
 public class SwiftSendProvider implements NotificationProvider {
@@ -27,35 +27,33 @@ public class SwiftSendProvider implements NotificationProvider {
     private static final Logger log = LoggerFactory.getLogger(SwiftSendProvider.class);
 
     private final RestTemplate restTemplate;
-    private final String baseUrl;
-    private final String apiKey;
-    private final String studentGroup;
+    private final String       baseUrl;
+    private final String       studentGroup;
 
     public SwiftSendProvider(
             @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
-            @Value("${provider.swiftsend.api-key:your-api-key-here}") String apiKey,
             @Value("${fakecomworld.student-group:group-1}") String studentGroup) {
         this.restTemplate = restTemplate;
         this.baseUrl      = baseUrl;
-        this.apiKey       = apiKey;
         this.studentGroup = studentGroup;
     }
 
-    @Override public NotificationChannel channel()    { return NotificationChannel.SMS; }
-    @Override public String providerName()             { return "SwiftSend"; }
+    @Override public NotificationChannel channel()  { return NotificationChannel.SMS; }
+    @Override public String providerName()           { return "SwiftSend"; }
 
     @Override
-    public NotificationResult send(AppointmentEvent event) {
+    public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-API-KEY",       apiKey);
+            headers.set("X-API-KEY",       credentials.apiKey());
             headers.set("X-STUDENT-GROUP", studentGroup);
 
-            // recipients is een array; content is de berichttekst
             String recipient = event.getPatientPhone() != null ? event.getPatientPhone() : "unknown";
-            log.debug("[SwiftSend] Sturen naar {} — appointment={}", MessageHelper.mask(recipient), event.getAppointmentUuid());
+            log.debug("[SwiftSend] Sturen naar {} — appointment={}",
+                    MessageHelper.mask(recipient), event.getAppointmentUuid());
+
             Map<String, Object> body = Map.of(
                     "recipients", new String[]{ recipient },
                     "content",    buildMessage(event)

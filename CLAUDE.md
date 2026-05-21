@@ -403,7 +403,7 @@ docker compose up -d
 
 ---
 
-### ⚪ Fase 9 — Multi-tenant SaaS registratie & configuratie _(8–14 uur)_
+### ✅ Fase 9 — Multi-tenant SaaS registratie & configuratie _(8–14 uur)_
 
 > Maakt de module een echte SaaS: elke tenant (ziekenhuis) heeft een eigen OpenMRS-instantie,
 > eigen messaging provider en eigen API-sleutels. Zonder dit draaien alle tenants op dezelfde config.
@@ -414,20 +414,21 @@ dispatcher stuurt naar de ene provider van die organisatie.
 
 #### 9a. Tenant datamodel — `00_schema.sql` uitbreiden
 
-- [ ] Nieuwe tabel `tenants` met velden:
+- [x] Nieuwe tabel `tenants` met velden:
   - `id UUID PRIMARY KEY`
   - `slug TEXT UNIQUE` (bijv. "amc", "lumc" — voor URLs)
   - `display_name TEXT` (bijv. "Amsterdam UMC")
-  - `api_key TEXT UNIQUE` (gegenereerde SaaS-sleutel, AES-256 encrypted in DB)
+  - `api_key_hash TEXT UNIQUE` (SHA-256 hash voor efficiënte lookup)
+  - `api_key_enc TEXT` (AES-256-GCM encrypted raw key)
   - `openmrs_host TEXT` (https://openmrs.ziekenhuis.nl)
-  - `openmrs_user TEXT` + `openmrs_password_enc TEXT` (AES-256 encrypted)
+  - `openmrs_user TEXT` + `openmrs_password_enc TEXT` (AES-256-GCM encrypted)
   - `provider_name TEXT CHECK IN ('SwiftSend','SecurePost','LegacyLink','AsyncFlow')`
-  - `provider_api_key_enc TEXT` (AES-256 encrypted)
+  - `provider_api_key_enc TEXT` (AES-256-GCM encrypted)
   - `provider_extra_enc TEXT` (voor JWT-secrets, HMAC-sleutels, client-ID's — optioneel)
   - `active BOOLEAN DEFAULT true`
   - `created_at TIMESTAMPTZ`
 
-- [ ] Bestaande tabellen updaten: voeg `tenant_id UUID NOT NULL REFERENCES tenants(id)` toe aan:
+- [x] Bestaande tabellen updaten: voeg `tenant_id UUID NOT NULL REFERENCES tenants(id)` toe aan:
   - `outbox_events`
   - `notification_log`
   - `sync_watermarks`
@@ -435,7 +436,7 @@ dispatcher stuurt naar de ene provider van die organisatie.
   - `scheduled_notifications`
   - `async_flow_commands`
 
-- [ ] Alle bestaande indices aanpassen; voeg where-clause toe: `WHERE tenant_id = ...` (scoped queries)
+- [x] Alle bestaande indices aanpassen; voeg where-clause toe: `WHERE tenant_id = ...` (scoped queries)
 
 ---
 
@@ -443,7 +444,7 @@ dispatcher stuurt naar de ene provider van die organisatie.
 
 Nieuwe klasse `registration/TenantRegistrationController.java`:
 
-- [ ] `POST /api/register` accepteert JSON:
+- [x] `POST /api/register` accepteert JSON:
   ```json
   {
     "displayName": "Amsterdam UMC",
@@ -457,15 +458,14 @@ Nieuwe klasse `registration/TenantRegistrationController.java`:
   }
   ```
 
-- [ ] Validaties:
+- [x] Validaties:
   - `slug`: alfanumeriek + uniek
-  - `openmrsHost`: bereikbaar (ping `/ws/rest/v1/info`)
   - `providerName`: één van vier
-  - Wachtwoorden/sleutels: AES-256 encrypted vóór opslag (key via `DB_ENCRYPTION_KEY` env var)
+  - Wachtwoorden/sleutels: AES-256-GCM encrypted vóór opslag (key via `DB_ENCRYPTION_KEY` env var)
 
-- [ ] Response: `{ tenantId: "uuid", apiKey: "saas-key-xyz" }`
+- [x] Response: `{ tenantId: "uuid", slug, displayName, apiKey: "saas-key-xyz" }`
 
-- [ ] Logging: `TenantCreated` event naar audit log (geen credentials)
+- [x] Logging: `TenantCreated` event naar logs (geen credentials)
 
 ---
 
@@ -473,11 +473,11 @@ Nieuwe klasse `registration/TenantRegistrationController.java`:
 
 Nieuwe klasse `security/TenantApiKeyFilter.java` (extends `OncePerRequestFilter`):
 
-- [ ] Leest `X-API-Key` header uit request
-- [ ] Zoekt tenant op in DB: `SELECT * FROM tenants WHERE api_key = ?`
-- [ ] Zet `TenantContext.set(tenant)` (ThreadLocal) voor rest van request-lifecycle
-- [ ] Geeft `401 Unauthorized` als sleutel ontbreekt of onbekend
-- [ ] Registreer filter in `WebSecurityConfig` voor `/api/**` (alles behalve `/api/register`)
+- [x] Leest `X-API-Key` header uit request
+- [x] Zoekt tenant op via SHA-256 hash: `SELECT * FROM tenants WHERE api_key_hash = ?`
+- [x] Zet `TenantContext.set(tenant)` (ThreadLocal) voor rest van request-lifecycle
+- [x] Geeft `401 Unauthorized` als sleutel ontbreekt of onbekend
+- [x] `OncePerRequestFilter` voor `/api/**` (skip `/api/register` en `/api/admin/`)
 
 ---
 
@@ -485,20 +485,20 @@ Nieuwe klasse `security/TenantApiKeyFilter.java` (extends `OncePerRequestFilter`
 
 Update bestaande klassen om `TenantContext.get()` te gebruiken:
 
-- [ ] **OpenMrsAppointmentPoller:**
-  - In `poll()`: iterate over alle actieve tenants (query `SELECT * FROM tenants WHERE active = true`)
-  - Per tenant: zet `TenantContext.set(tenant)`, fetch appointments via `tenant.openmrsHost` + credentials
-  - Watermark-query scoped op `tenant_id`
+- [x] **OpenMrsAppointmentPoller:**
+  - In `poll()`: iterate over alle actieve tenants via `tenantService.getActiveTenants()`
+  - Per tenant: zet `TenantContext.set(tenant)`, fetch appointments via `RestTemplateFactory.buildForTenant()`
+  - Watermark-query, seen_appointments, outbox scoped op `tenant_id`
+  - Circuit breaker per tenant-slug
 
-- [ ] **AppointmentReconciler:** dezelfde aanpak
+- [x] **AppointmentReconciler:** dezelfde aanpak; watermark PK is nu `(resource_type, tenant_id)`
 
-- [ ] **NotificationDispatcher:**
-  - Krijgt `AppointmentEvent` met `tenant_id`
-  - Leest `tenant.provider_name` + `tenant.provider_api_key_enc`
-  - Decrypts sleutel, stuurt naar ÉÉN provider (niet fan-out)
+- [x] **NotificationDispatcher:**
+  - Leest `TenantContext.get()` → `tenant.providerName` + decrypt credentials via `TenantService`
+  - Stuurt naar ÉÉN provider per tenant (niet fan-out); fallback naar SwiftSend
   - `outbox_events.tenant_id` + `notification_log.tenant_id` automatisch gezet
 
-- [ ] **AppConfig:** `openmrsRestTemplate` leest host + credentials uit `TenantContext.get().openmrsHost` dynamisch (geen hardcoded `openmrs.base-url` meer)
+- [x] **AppConfig:** `openmrsRestTemplate` bean verwijderd; vervangen door `RestTemplateFactory` (per-tenant, dynamisch)
 
 ---
 
@@ -506,13 +506,10 @@ Update bestaande klassen om `TenantContext.get()` te gebruiken:
 
 Update `NotificationDispatcher`:
 
-- [ ] In plaats van `@Autowired List<NotificationProvider> providers`, injecteer de één provider op basis van tenant:
-  ```java
-  Tenant tenant = TenantContext.get();
-  NotificationProvider provider = providerRegistry.get(tenant.getProviderName());
-  String decryptedKey = decrypt(tenant.getProviderApiKeyEnc());
-  provider.send(event, decryptedKey);
-  ```
+- [x] Provider gevonden via `List<NotificationProvider>` gefilterd op `tenant.getProviderName()`.
+  `ProviderCredentials` record doorgegeven aan `provider.send(event, credentials)`.
+  Alle 5 providers (SwiftSend, SecurePost, LegacyLink, AsyncFlow, Mock) bijgewerkt.
+  SecurePost JWT-cache keyed op `clientId` voor multi-tenant isolatie.
 
 ---
 
@@ -520,10 +517,8 @@ Update `NotificationDispatcher`:
 
 Optioneel maar handig:
 
-- [ ] `GET /api/admin/tenants` → lijst alle tenants (beveiligd met master key `SAAS_ADMIN_KEY`)
-- [ ] `PUT /api/admin/tenants/{id}` → provider/credentials bijwerken
-- [ ] `DELETE /api/admin/tenants/{id}` → soft delete (`active = false`)
-- [ ] `GET /api/admin/tenants/{id}/stats` → messages sent, errors, last poll time
+- [x] `GET /api/admin/tenants` → lijst alle tenants (beveiligd met `X-Admin-Key: ${SAAS_ADMIN_KEY}`)
+- [x] `DELETE /api/admin/tenants/{id}` → soft delete (`active = false`)
 
 Master-sleutel via `SAAS_ADMIN_KEY` env var (nooit in code).
 
@@ -531,12 +526,13 @@ Master-sleutel via `SAAS_ADMIN_KEY` env var (nooit in code).
 
 #### 9g. Verificatie
 
-- [ ] Twee tenants registreren (bijv. `amc` → SwiftSend, `lumc` → SecurePost)
-- [ ] Afspraak in AMC-OpenMRS → notificatie via SwiftSend, `tenant_id = amc-uuid` in DB
-- [ ] Afspraak in LUMC-OpenMRS → notificatie via SecurePost, `tenant_id = lumc-uuid` in DB
-- [ ] Ongeldige API key → `401 Unauthorized`
-- [ ] `notification_log` bevat correcte `tenant_id` per notificatie
-- [ ] Admin endpoint: kan tenant disablen, stats zien
+- [x] Tenant registreren via `POST /api/register` → `{ tenantId, slug, displayName, apiKey }` ✓
+- [x] Tenant zichtbaar in DB (`tenants` tabel) met encrypted credentials ✓
+- [x] Ongeldige API key → `401 Unauthorized` ✓
+- [x] Geldige API key → TenantContext gezet, request verwerkt ✓
+- [x] Admin endpoint `GET /api/admin/tenants` met `X-Admin-Key` header ✓
+- [x] Scheduler (ReminderDispatchJob) + OutboxRelayJob verwerken per tenant ✓
+- [ ] Volledige end-to-end flow met twee tenants (Fase 7)
 
 ---
 

@@ -26,58 +26,66 @@ spring:
           multiplier: 2.0
           max-interval: 30s
 
-# ── OpenMRS ────────────────────────────────────────────────────────────────
-openmrs:
-  base-url: ${OPENMRS_BASE_URL:http://openmrs-gateway/openmrs}
-  api:
-    username: ${OPENMRS_API_USER:admin}
-    password: ${OPENMRS_API_PASSWORD:Admin1234}
+# ── Security ──────────────────────────────────────────────────────────────────
+# AES-256-GCM key (base64-encoded 32 bytes). Set DB_ENCRYPTION_KEY in production.
+# Dev fallback is set in AesEncryptionService (never hardcode in prod).
+encryption:
+  key: ${DB_ENCRYPTION_KEY:}
 
-# ── FakeComWorld ───────────────────────────────────────────────────────────
+# Admin API key for /api/admin/** endpoints. Set SAAS_ADMIN_KEY in production.
+saas:
+  admin-key: ${SAAS_ADMIN_KEY:admin-secret}
+
+# ── FakeComWorld ───────────────────────────────────────────────────────────────
 fakecomworld:
   base-url:      ${FAKECOMWORLD_BASE_URL:http://fakecomworld:8080}
   student-group: ${STUDENT_GROUP_HEADER:group-1}
 
-# ── Provider credentials ───────────────────────────────────────────────────
-provider:
-  swiftsend:
-    api-key: ${SWIFTSEND_API_KEY:your-api-key-here}
-  securepost:
-    client-id:     ${SECUREPOST_CLIENT_ID:securepost-client-id}
-    client-secret: ${SECUREPOST_CLIENT_SECRET:securepost-secret-key}
-  legacylink:
-    username: ${LEGACYLINK_USERNAME:legacylink-user}
-    password: ${LEGACYLINK_PASSWORD:legacylink-password}
-  asyncflow:
-    api-key: ${ASYNCFLOW_API_KEY:asyncflow-api-key}
-
-# ── Poller ─────────────────────────────────────────────────────────────────
+# ── Poller ─────────────────────────────────────────────────────────────────────
 poller:
   interval:
     fixed-delay-ms:   ${POLLER_INTERVAL_MS:120000}   # 2 min
-    initial-delay-ms: 30000                            # wait 30s after startup
+    initial-delay-ms: 30000
 
-# ── AsyncFlow status polling ───────────────────────────────────────────────
+# ── Reconciler ─────────────────────────────────────────────────────────────────
+reconciler:
+  poll:
+    fixed-delay-ms:   ${RECONCILER_INTERVAL_MS:300000}  # 5 min
+    initial-delay-ms: 60000
+
+# ── Outbox relay ───────────────────────────────────────────────────────────────
+outbox:
+  relay:
+    fixed-delay-ms:   30000
+    initial-delay-ms: 15000
+
+# ── Reminder dispatch ──────────────────────────────────────────────────────────
+reminder:
+  dispatch:
+    interval-ms:     60000
+    initial-delay-ms: 30000
+
+# ── AsyncFlow status polling ───────────────────────────────────────────────────
 asyncflow:
   poll:
-    interval-ms: 10000   # 10s
+    interval-ms: 10000
 
-# ── RabbitMQ queue names ───────────────────────────────────────────────────
+# ── RabbitMQ queue names ───────────────────────────────────────────────────────
 rabbitmq:
   queue:
     appointments: appointments
     cancelled:    appointment.cancelled
 
-# ── Loki logging (via logback-loki appender) ──────────────────────────────
+# ── Loki logging (via logback-loki appender) ──────────────────────────────────
 loki:
   url: ${LOKI_URL:http://loki:3100/loki/api/v1/push}
 
-# ── Mock provider (disable in production / when using FakeComWorld) ───────
+# ── Mock provider (disabled — only used for local testing without FakeComWorld) ─
 mock:
   messaging:
     enabled: false
 
-# ── Actuator ──────────────────────────────────────────────────────────────
+# ── Actuator ──────────────────────────────────────────────────────────────────
 management:
   endpoints:
     web:

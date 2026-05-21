@@ -21,6 +21,7 @@ public class AppointmentEvent {
         REMINDER_1H
     }
 
+    private java.util.UUID tenantId;
     private String appointmentUuid;
     private String patientUuid;
     private String patientName;
@@ -35,6 +36,9 @@ public class AppointmentEvent {
     private Instant occurredAt;
 
     // ── Getters & setters ────────────────────────────────────────────────
+
+    public java.util.UUID getTenantId() { return tenantId; }
+    public void setTenantId(java.util.UUID tenantId) { this.tenantId = tenantId; }
 
     public String getAppointmentUuid() { return appointmentUuid; }
     public void setAppointmentUuid(String appointmentUuid) { this.appointmentUuid = appointmentUuid; }

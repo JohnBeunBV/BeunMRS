@@ -4,6 +4,8 @@ import com.openmrs.notification.adapter.NotificationProvider;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
+import com.openmrs.notification.model.ProviderCredentials;
+import com.openmrs.notification.util.MessageHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,44 +15,38 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import com.openmrs.notification.util.MessageHelper;
-
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * SecurePost — REST API with JWT authentication.
+ * SecurePost — email via JWT-authenticated REST API.
  *
- * JWT tokens expire after 3 minutes (FakeComWorld default).
- * This adapter caches the token and refreshes it proactively 30s before expiry.
- * On 401 responses it immediately fetches a new token and retries once.
+ * credentials.apiKey()  = clientId
+ * credentials.extra()   = clientSecret
+ *
+ * Token cache is keyed by clientId so multiple tenants can use SecurePost
+ * simultaneously with their own tokens.
  */
 @Component
 public class SecurePostProvider implements NotificationProvider {
 
     private static final Logger log = LoggerFactory.getLogger(SecurePostProvider.class);
-    private static final long TOKEN_REFRESH_BUFFER_SECONDS = 30;
+    private static final long   TOKEN_REFRESH_BUFFER_SECONDS = 30;
 
     private final RestTemplate restTemplate;
-    private final String baseUrl;
-    private final String clientId;
-    private final String clientSecret;
-    private final String studentGroup;
+    private final String       baseUrl;
+    private final String       studentGroup;
 
-    // Token cache
-    private volatile String  cachedToken;
-    private volatile Instant tokenExpiresAt = Instant.EPOCH;
+    // Per-clientId token cache (thread-safe)
+    private final ConcurrentHashMap<String, TokenEntry> tokenCache = new ConcurrentHashMap<>();
 
     public SecurePostProvider(
             @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
-            @Value("${provider.securepost.client-id:securepost-client-id}") String clientId,
-            @Value("${provider.securepost.client-secret:securepost-secret-key}") String clientSecret,
             @Value("${fakecomworld.student-group:group-1}") String studentGroup) {
         this.restTemplate = restTemplate;
         this.baseUrl      = baseUrl;
-        this.clientId     = clientId;
-        this.clientSecret = clientSecret;
         this.studentGroup = studentGroup;
     }
 
@@ -58,18 +54,19 @@ public class SecurePostProvider implements NotificationProvider {
     @Override public String providerName()          { return "SecurePost"; }
 
     @Override
-    public NotificationResult send(AppointmentEvent event) {
+    public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
+        String clientId     = credentials.apiKey();
+        String clientSecret = credentials.extra();
+
         try {
-            String token = getValidToken();
+            String token  = getValidToken(clientId, clientSecret);
             NotificationResult result = doSend(event, token);
 
-            // If 401, refresh token and retry once
             if (!result.isSuccess() && result.getErrorMessage() != null
                     && result.getErrorMessage().contains("401")) {
                 log.info("[SecurePost] Got 401 — refreshing token and retrying");
-                cachedToken    = null;
-                tokenExpiresAt = Instant.EPOCH;
-                token  = getValidToken();
+                tokenCache.remove(clientId);
+                token  = getValidToken(clientId, clientSecret);
                 result = doSend(event, token);
             }
             return result;
@@ -87,9 +84,11 @@ public class SecurePostProvider implements NotificationProvider {
             headers.setBearerAuth(token);
             headers.set("X-STUDENT-GROUP", studentGroup);
 
-            String recipient = event.getPatientEmail() != null ? event.getPatientEmail() : "unknown@example.com";
+            String recipient = event.getPatientEmail() != null
+                    ? event.getPatientEmail() : "unknown@example.com";
             log.debug("[SecurePost] Sturen naar {} — appointment={}",
                     MessageHelper.mask(recipient), event.getAppointmentUuid());
+
             Map<String, Object> body = Map.of(
                     "recipient", recipient,
                     "subject",   subjectFor(event),
@@ -120,20 +119,19 @@ public class SecurePostProvider implements NotificationProvider {
         }
     }
 
-    // ── Token management ──────────────────────────────────────────────────────
-
-    private synchronized String getValidToken() {
+    private synchronized String getValidToken(String clientId, String clientSecret) {
+        TokenEntry entry = tokenCache.get(clientId);
         Instant now = Instant.now();
-        if (cachedToken != null && now.isBefore(tokenExpiresAt.minusSeconds(TOKEN_REFRESH_BUFFER_SECONDS))) {
-            return cachedToken;
+        if (entry != null && now.isBefore(entry.expiresAt().minusSeconds(TOKEN_REFRESH_BUFFER_SECONDS))) {
+            return entry.token();
         }
-        log.debug("[SecurePost] Fetching new JWT token");
-        fetchToken();
-        return cachedToken;
+        TokenEntry fresh = fetchToken(clientId, clientSecret);
+        tokenCache.put(clientId, fresh);
+        return fresh.token();
     }
 
     @SuppressWarnings("unchecked")
-    private void fetchToken() {
+    private TokenEntry fetchToken(String clientId, String clientSecret) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("X-STUDENT-GROUP", studentGroup);
@@ -154,11 +152,10 @@ public class SecurePostProvider implements NotificationProvider {
             throw new RuntimeException("Failed to obtain SecurePost JWT: HTTP " + resp.getStatusCode());
         }
 
-        cachedToken    = (String) resp.getBody().get("accessToken");  // veld heet accessToken, niet token
-        // FakeComWorld returns expiresIn in seconds
-        int expiresIn  = (int) resp.getBody().getOrDefault("expiresIn", 180);
-        tokenExpiresAt = Instant.now().plusSeconds(expiresIn);
-        log.debug("[SecurePost] Token cached, expires in {}s", expiresIn);
+        String token     = (String) resp.getBody().get("accessToken");
+        int    expiresIn = (int) resp.getBody().getOrDefault("expiresIn", 180);
+        log.debug("[SecurePost] Token cached for clientId={}, expires in {}s", clientId, expiresIn);
+        return new TokenEntry(token, Instant.now().plusSeconds(expiresIn));
     }
 
     private String subjectFor(AppointmentEvent event) {
@@ -183,4 +180,6 @@ public class SecurePostProvider implements NotificationProvider {
             case REMINDER_1H  -> String.format("Herinnering: uw afspraak is over een uur (%s)%s.%s", time, loc, comments);
         };
     }
+
+    private record TokenEntry(String token, Instant expiresAt) {}
 }

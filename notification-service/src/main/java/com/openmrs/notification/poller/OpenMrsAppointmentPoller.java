@@ -1,14 +1,16 @@
 package com.openmrs.notification.poller;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.openmrs.notification.config.RestTemplateFactory;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.outbox.OutboxService;
 import com.openmrs.notification.service.PersonContactService;
+import com.openmrs.notification.tenant.Tenant;
+import com.openmrs.notification.tenant.TenantContext;
+import com.openmrs.notification.tenant.TenantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,180 +27,134 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Polls the OpenMRS Appointment REST v1 API on a fixed schedule.
+ * Polls the OpenMRS Appointment REST v1 API for every active tenant.
  *
- * NOTE: The FHIR2 Appointment resource is NOT supported by this OpenMRS
- * installation (the fhir2 module does not include Appointment mapping).
- * We use POST /ws/rest/v1/appointment/search with a sliding 48-hour window
- * instead. The AppointmentReconciler uses a different window for catch-up.
- *
- * Resilience design:
- * ─────────────────
- * 1. Sliding window — polls the next 48 hours from now. Catches new and
- * recently-updated appointments within that window.
- *
- * 2. Duplicate guard — before publishing to RabbitMQ we check whether the
- * appointment UUID was already queued (seen_appointments table). Status
- * changes (Scheduled → Cancelled) trigger a re-queue with CANCELLED type.
- *
- * 3. Circuit breaker (manual) — after CIRCUIT_OPEN_THRESHOLD consecutive
- * OpenMRS failures we back off for CIRCUIT_OPEN_WAIT_MS and log an alert.
- * When OpenMRS recovers the circuit resets automatically.
- *
- * 4. Never-advance-on-failure — watermark only moves forward after ALL
- * fetched appointments have been processed without error.
- *
- * 5. All fetched appointments are written to Postgres BEFORE being published
- * to RabbitMQ. If the broker is down, we have the data and will retry.
- *
- * Data flow:
- * [Scheduler] → POST /ws/rest/v1/appointment/search (next 48h)
- * → for each appointment: check seen_appointments for status change
- * → new or changed: save to seen_appointments + outbox
- * → publish AppointmentEvent to RabbitMQ exchange
+ * Each tenant has its own OpenMRS host, credentials, and watermark cursor.
+ * TenantContext is set per tenant iteration and cleared in a finally block.
  */
 @Component
 public class OpenMrsAppointmentPoller {
 
     private static final Logger log = LoggerFactory.getLogger(OpenMrsAppointmentPoller.class);
 
-    private static final String EXCHANGE = "openmrs.events";
-    private static final int CIRCUIT_OPEN_THRESHOLD = 5;
-    private static final long CIRCUIT_OPEN_WAIT_MS = 120_000; // 2 min
+    private static final String EXCHANGE               = "openmrs.events";
+    private static final int    CIRCUIT_OPEN_THRESHOLD = 5;
+    private static final long   CIRCUIT_OPEN_WAIT_MS   = 120_000;
+    private static final int    POLL_WINDOW_HOURS       = 720;
 
-    /**
-     * How far ahead to search for appointments (hours).
-     * 30 days — ensures patients get a confirmation immediately when
-     * an appointment is created, not only 48h before it occurs.
-     */
-    private static final int POLL_WINDOW_HOURS = 720;
-
-    private final RestTemplate restTemplate;
-    private final RabbitTemplate rabbitTemplate;
-    private final JdbcTemplate jdbc;
-    private final OutboxService outboxService;
+    private final RestTemplateFactory  restTemplateFactory;
+    private final RabbitTemplate       rabbitTemplate;
+    private final JdbcTemplate         jdbc;
+    private final OutboxService        outboxService;
     private final PersonContactService personContactService;
-    private final String openmrsBaseUrl;
+    private final TenantService        tenantService;
 
-    // Circuit breaker state (in-memory — resets on restart, which is fine)
-    private int consecutiveFailures = 0;
-    private long circuitOpenedAt = 0;
+    // Circuit breaker state per tenant (keyed by tenant slug)
+    private final java.util.concurrent.ConcurrentHashMap<String, int[]>  consecutiveFailures = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<String, long[]> circuitOpenedAt     = new java.util.concurrent.ConcurrentHashMap<>();
 
     public OpenMrsAppointmentPoller(
-            @Qualifier("openmrsRestTemplate") RestTemplate restTemplate,
+            RestTemplateFactory restTemplateFactory,
             RabbitTemplate rabbitTemplate,
             JdbcTemplate jdbc,
             OutboxService outboxService,
             PersonContactService personContactService,
-            @Value("${openmrs.base-url:http://gateway/openmrs}") String openmrsBaseUrl) {
-        this.restTemplate = restTemplate;
-        this.rabbitTemplate = rabbitTemplate;
-        this.jdbc = jdbc;
-        this.outboxService = outboxService;
-        this.personContactService = personContactService;
-        this.openmrsBaseUrl = openmrsBaseUrl;
+            TenantService tenantService) {
+        this.restTemplateFactory  = restTemplateFactory;
+        this.rabbitTemplate        = rabbitTemplate;
+        this.jdbc                  = jdbc;
+        this.outboxService         = outboxService;
+        this.personContactService  = personContactService;
+        this.tenantService         = tenantService;
     }
 
-    /**
-     * Main polling loop. Runs every 2 minutes by default.
-     * Adjust via: poller.interval.fixed-delay-ms=120000
-     */
-    @Scheduled(fixedDelayString = "${poller.interval.fixed-delay-ms:120000}", initialDelayString = "${poller.interval.initial-delay-ms:30000}")
+    @Scheduled(fixedDelayString = "${poller.interval.fixed-delay-ms:120000}",
+               initialDelayString = "${poller.interval.initial-delay-ms:30000}")
     public void poll() {
+        List<Tenant> tenants = tenantService.getActiveTenants();
+        if (tenants.isEmpty()) {
+            log.debug("Poller: no active tenants — skipping");
+            return;
+        }
+        for (Tenant tenant : tenants) {
+            TenantContext.set(tenant);
+            try {
+                pollForTenant(tenant);
+            } finally {
+                TenantContext.clear();
+            }
+        }
+    }
 
-        // ── Circuit breaker check ─────────────────────────────────────────
-        if (isCircuitOpen()) {
-            log.warn("Circuit OPEN — skipping poll. OpenMRS unreachable for {} consecutive attempts.",
-                    consecutiveFailures);
+    private void pollForTenant(Tenant tenant) {
+        String slug = tenant.getSlug();
+
+        if (isCircuitOpen(slug)) {
+            log.warn("Circuit OPEN for tenant={} — skipping poll", slug);
             return;
         }
 
-        Instant now = Instant.now();
+        Instant now       = Instant.now();
         Instant windowEnd = now.plus(POLL_WINDOW_HOURS, ChronoUnit.HOURS);
-        log.info("Polling OpenMRS appointments {} → {}", now, windowEnd);
+        log.info("Polling OpenMRS for tenant={} window {} → {}", slug, now, windowEnd);
+
+        String password = tenantService.decryptOpenmrsPassword(tenant);
+        RestTemplate rt = restTemplateFactory.buildForTenant(tenant, password);
 
         List<RestAppointment> appointments;
         try {
-            appointments = fetchAppointments(now, windowEnd);
-            consecutiveFailures = 0; // success → reset circuit
+            appointments = fetchAppointments(rt, tenant.getOpenmrsHost(), now, windowEnd);
+            resetCircuit(slug);
         } catch (Exception ex) {
-            consecutiveFailures++;
-            log.error("OpenMRS poll failed (attempt #{}) — will retry next interval.",
-                    consecutiveFailures, ex);
-            if (consecutiveFailures >= CIRCUIT_OPEN_THRESHOLD) {
-                circuitOpenedAt = System.currentTimeMillis();
-                log.error("CIRCUIT OPENED — OpenMRS unreachable after {} attempts. Backing off {}s.",
-                        consecutiveFailures, CIRCUIT_OPEN_WAIT_MS / 1000);
-            }
+            incrementFailure(slug);
+            log.error("OpenMRS poll failed for tenant={} (attempt #{})",
+                    slug, getFailures(slug), ex);
             return;
         }
 
         if (appointments.isEmpty()) {
-            log.debug("No appointments in the next {} hours.", POLL_WINDOW_HOURS);
+            log.debug("No appointments in window for tenant={}", slug);
             return;
         }
 
-        log.info("Found {} appointment(s) in polling window", appointments.size());
-
+        log.info("Found {} appointment(s) for tenant={}", appointments.size(), slug);
         int queued = 0;
         for (RestAppointment apt : appointments) {
             try {
                 String currentStatus = apt.getStatus();
-                String seenStatus = getSeenStatus(apt.getUuid());
+                String seenStatus    = getSeenStatus(apt.getUuid(), tenant.getId());
 
-                // Skip if already seen with the same status
-                if (seenStatus != null && seenStatus.equalsIgnoreCase(currentStatus)) {
-                    log.debug("Skipping unchanged appointment uuid={} status={}", apt.getUuid(), currentStatus);
-                    continue;
-                }
+                if (seenStatus != null && seenStatus.equalsIgnoreCase(currentStatus)) continue;
 
-                // Enrich comments — the search endpoint always returns null for comments,
-                // but GET ?uuid={uuid} returns the full record including comments.
-                enrichComments(apt);
+                enrichComments(rt, apt, tenant.getOpenmrsHost());
 
-                AppointmentEvent event = toEvent(apt, seenStatus);
+                AppointmentEvent event = toEvent(apt, seenStatus, tenant);
                 outboxService.writePending(event);
-                markSeen(apt.getUuid(), currentStatus);
+                markSeen(apt.getUuid(), tenant.getId(), currentStatus);
 
                 String routingKey = resolveRoutingKey(currentStatus);
                 rabbitTemplate.convertAndSend(EXCHANGE, routingKey, event);
-                outboxService.markPublished(apt.getUuid());
+                outboxService.markPublished(apt.getUuid(), tenant.getId());
                 queued++;
 
-                log.info("Queued appointment uuid={} status={} routingKey={}",
-                        apt.getUuid(), currentStatus, routingKey);
-
             } catch (Exception ex) {
-                log.error("Failed to queue appointment uuid={} — will retry on next poll",
-                        apt.getUuid(), ex);
+                log.error("Failed to queue appointment uuid={} tenant={}", apt.getUuid(), slug, ex);
             }
         }
-
-        log.info("Poll complete — queued {}/{} appointments", queued, appointments.size());
+        log.info("Poll complete tenant={} — queued {}/{}", slug, queued, appointments.size());
     }
 
     // ── Comments enrichment ──────────────────────────────────────────────────
 
-    /**
-     * The POST /appointment/search endpoint always returns comments=null.
-     * GET /appointment?uuid={uuid} returns the full record including comments.
-     * We call this only for new/changed appointments to limit API overhead.
-     */
     @SuppressWarnings("rawtypes")
-    private void enrichComments(RestAppointment apt) {
+    private void enrichComments(RestTemplate rt, RestAppointment apt, String openmrsHost) {
         if (apt.getUuid() == null) return;
         try {
-            String url = openmrsBaseUrl + "/ws/rest/v1/appointment?uuid=" + apt.getUuid();
-            ResponseEntity<Map> resp = restTemplate.getForEntity(url, Map.class);
+            String url = openmrsHost + "/ws/rest/v1/appointment?uuid=" + apt.getUuid();
+            ResponseEntity<Map> resp = rt.getForEntity(url, Map.class);
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
                 Object comments = resp.getBody().get("comments");
-                if (comments instanceof String s && !s.isBlank()) {
-                    apt.setComments(s);
-                    log.debug("[Comments] Enriched — uuid={}", apt.getUuid());
-                }
-            } else {
-                log.warn("[Comments] Unexpected response HTTP {} for uuid={}",
-                        resp.getStatusCode(), apt.getUuid());
+                if (comments instanceof String s && !s.isBlank()) apt.setComments(s);
             }
         } catch (Exception ex) {
             log.warn("[Comments] Could not fetch for uuid={}: {}", apt.getUuid(), ex.getMessage());
@@ -207,34 +163,31 @@ public class OpenMrsAppointmentPoller {
 
     // ── OpenMRS REST v1 appointment/search ───────────────────────────────────
 
-    private List<RestAppointment> fetchAppointments(Instant from, Instant to) {
-        String url = openmrsBaseUrl + "/ws/rest/v1/appointment/search";
-
+    private List<RestAppointment> fetchAppointments(RestTemplate rt, String openmrsHost,
+                                                     Instant from, Instant to) {
+        String url = openmrsHost + "/ws/rest/v1/appointment/search";
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
                 .withZone(ZoneOffset.UTC);
 
         Map<String, String> body = Map.of(
                 "startDate", fmt.format(from),
-                "endDate", fmt.format(to));
+                "endDate",   fmt.format(to));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         try {
-            ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
+            ResponseEntity<List<Map<String, Object>>> response = rt.exchange(
                     url, HttpMethod.POST, new HttpEntity<>(body, headers),
-                    new org.springframework.core.ParameterizedTypeReference<>() {
-                    });
+                    new org.springframework.core.ParameterizedTypeReference<>() {});
 
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null)
                 throw new RuntimeException("OpenMRS returned HTTP " + response.getStatusCode());
-            }
 
-            List<Map<String, Object>> raw = response.getBody();
-            return raw.stream().map(this::mapToRestAppointment).toList();
+            return response.getBody().stream().map(this::mapToRestAppointment).toList();
 
         } catch (HttpClientErrorException.Unauthorized e) {
-            throw new RuntimeException("OpenMRS auth failed — check OPENMRS_API_USER/PASSWORD", e);
+            throw new RuntimeException("OpenMRS auth failed for this tenant", e);
         } catch (ResourceAccessException e) {
             throw new RuntimeException("OpenMRS unreachable: " + e.getMessage(), e);
         }
@@ -246,35 +199,26 @@ public class OpenMrsAppointmentPoller {
         apt.setUuid((String) raw.get("uuid"));
         apt.setStatus((String) raw.get("status"));
 
-        // startDateTime is a Unix timestamp in milliseconds
         Object start = raw.get("startDateTime");
-        if (start instanceof Number) {
-            apt.setStartDateTime(Instant.ofEpochMilli(((Number) start).longValue()));
-        }
+        if (start instanceof Number) apt.setStartDateTime(Instant.ofEpochMilli(((Number) start).longValue()));
 
-        // Patient details
         Map<String, Object> patient = (Map<String, Object>) raw.get("patient");
         if (patient != null) {
             apt.setPatientUuid((String) patient.get("uuid"));
             apt.setPatientName((String) patient.get("name"));
         }
-
-        // Location
         Map<String, Object> location = (Map<String, Object>) raw.get("location");
-        if (location != null) {
-            apt.setLocationName((String) location.get("name"));
-        }
+        if (location != null) apt.setLocationName((String) location.get("name"));
 
-        // Comments
         apt.setComments((String) raw.get("comments"));
-
         return apt;
     }
 
     // ── Event mapping ────────────────────────────────────────────────────────
 
-    private AppointmentEvent toEvent(RestAppointment apt, String previousStatus) {
+    private AppointmentEvent toEvent(RestAppointment apt, String previousStatus, Tenant tenant) {
         AppointmentEvent event = new AppointmentEvent();
+        event.setTenantId(tenant.getId());
         event.setAppointmentUuid(apt.getUuid());
         event.setPatientUuid(apt.getPatientUuid());
         event.setPatientName(apt.getPatientName());
@@ -283,16 +227,12 @@ public class OpenMrsAppointmentPoller {
         event.setComments(apt.getComments());
         event.setOccurredAt(Instant.now());
         event.setEventType(statusToEventType(apt.getStatus(), previousStatus));
-
-        // Fase 2: contactgegevens ophalen via GET /ws/rest/v1/person/{uuid}?v=full
         personContactService.enrichEvent(event);
-
         return event;
     }
 
     private AppointmentEvent.EventType statusToEventType(String current, String previous) {
-        if (current == null)
-            return AppointmentEvent.EventType.SCHEDULED;
+        if (current == null) return AppointmentEvent.EventType.SCHEDULED;
         return switch (current.toLowerCase()) {
             case "cancelled", "missed" -> AppointmentEvent.EventType.CANCELLED;
             case "scheduled" -> previous == null
@@ -303,117 +243,88 @@ public class OpenMrsAppointmentPoller {
     }
 
     private String resolveRoutingKey(String status) {
-        if (status == null)
-            return "appointment.scheduled";
+        if (status == null) return "appointment.scheduled";
         return switch (status.toLowerCase()) {
             case "cancelled", "missed" -> "appointment.cancelled";
-            case "scheduled" -> "appointment.scheduled";
-            default -> "appointment.updated";
+            case "scheduled"           -> "appointment.scheduled";
+            default                    -> "appointment.updated";
         };
     }
 
     // ── Duplicate / change guard ─────────────────────────────────────────────
 
-    /** Returns the previously seen status, or null if never seen. */
-    private String getSeenStatus(String appointmentUuid) {
+    private String getSeenStatus(String appointmentUuid, java.util.UUID tenantId) {
         try {
             return jdbc.queryForObject(
-                    "SELECT openmrs_status FROM seen_appointments WHERE appointment_uuid = ?",
-                    String.class, appointmentUuid);
-        } catch (Exception e) {
-            return null;
-        }
+                    "SELECT openmrs_status FROM seen_appointments WHERE appointment_uuid = ? AND tenant_id = ?",
+                    String.class, appointmentUuid, tenantId);
+        } catch (Exception e) { return null; }
     }
 
-    private void markSeen(String appointmentUuid, String status) {
+    private void markSeen(String appointmentUuid, java.util.UUID tenantId, String status) {
         jdbc.update("""
-                INSERT INTO seen_appointments (appointment_uuid, openmrs_status, queued_at)
-                VALUES (?, ?, now())
-                ON CONFLICT (appointment_uuid) DO UPDATE
-                  SET openmrs_status = EXCLUDED.openmrs_status, queued_at = now()
-                """, appointmentUuid, status);
+            INSERT INTO seen_appointments (appointment_uuid, tenant_id, openmrs_status, queued_at)
+            VALUES (?, ?, ?, now())
+            ON CONFLICT (appointment_uuid, tenant_id) DO UPDATE
+              SET openmrs_status = EXCLUDED.openmrs_status, queued_at = now()
+            """, appointmentUuid, tenantId, status);
     }
 
     // ── Circuit breaker ──────────────────────────────────────────────────────
 
-    private boolean isCircuitOpen() {
-        if (consecutiveFailures < CIRCUIT_OPEN_THRESHOLD)
-            return false;
-        long elapsed = System.currentTimeMillis() - circuitOpenedAt;
-        if (elapsed >= CIRCUIT_OPEN_WAIT_MS) {
-            log.info("Circuit half-open — attempting recovery poll");
-            consecutiveFailures = CIRCUIT_OPEN_THRESHOLD - 1;
+    private boolean isCircuitOpen(String slug) {
+        int failures = getFailures(slug);
+        if (failures < CIRCUIT_OPEN_THRESHOLD) return false;
+        long opened  = circuitOpenedAt.getOrDefault(slug, new long[]{0})[0];
+        if (System.currentTimeMillis() - opened >= CIRCUIT_OPEN_WAIT_MS) {
+            consecutiveFailures.put(slug, new int[]{CIRCUIT_OPEN_THRESHOLD - 1});
             return false;
         }
         return true;
+    }
+
+    private int getFailures(String slug) {
+        return consecutiveFailures.getOrDefault(slug, new int[]{0})[0];
+    }
+
+    private void incrementFailure(String slug) {
+        int next = getFailures(slug) + 1;
+        consecutiveFailures.put(slug, new int[]{next});
+        if (next >= CIRCUIT_OPEN_THRESHOLD) {
+            circuitOpenedAt.put(slug, new long[]{System.currentTimeMillis()});
+            log.error("CIRCUIT OPENED for tenant={} after {} failures", slug, next);
+        }
+    }
+
+    private void resetCircuit(String slug) {
+        consecutiveFailures.put(slug, new int[]{0});
     }
 
     // ── REST v1 Appointment POJO ─────────────────────────────────────────────
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RestAppointment {
-        private String uuid;
-        private String status;
+        private String  uuid;
+        private String  status;
         private Instant startDateTime;
-        private String patientUuid;
-        private String patientName;
-        private String locationName;
-        private String comments;
+        private String  patientUuid;
+        private String  patientName;
+        private String  locationName;
+        private String  comments;
 
-        public String getUuid() {
-            return uuid;
-        }
-
-        public void setUuid(String v) {
-            this.uuid = v;
-        }
-
-        public String getStatus() {
-            return status;
-        }
-
-        public void setStatus(String v) {
-            this.status = v;
-        }
-
-        public Instant getStartDateTime() {
-            return startDateTime;
-        }
-
-        public void setStartDateTime(Instant v) {
-            this.startDateTime = v;
-        }
-
-        public String getPatientUuid() {
-            return patientUuid;
-        }
-
-        public void setPatientUuid(String v) {
-            this.patientUuid = v;
-        }
-
-        public String getPatientName() {
-            return patientName;
-        }
-
-        public void setPatientName(String v) {
-            this.patientName = v;
-        }
-
-        public String getLocationName() {
-            return locationName;
-        }
-
-        public void setLocationName(String v) {
-            this.locationName = v;
-        }
-
-        public String getComments() {
-            return comments;
-        }
-
-        public void setComments(String v) {
-            this.comments = v;
-        }
+        public String  getUuid()            { return uuid; }
+        public void    setUuid(String v)    { this.uuid = v; }
+        public String  getStatus()          { return status; }
+        public void    setStatus(String v)  { this.status = v; }
+        public Instant getStartDateTime()             { return startDateTime; }
+        public void    setStartDateTime(Instant v)    { this.startDateTime = v; }
+        public String  getPatientUuid()               { return patientUuid; }
+        public void    setPatientUuid(String v)       { this.patientUuid = v; }
+        public String  getPatientName()               { return patientName; }
+        public void    setPatientName(String v)       { this.patientName = v; }
+        public String  getLocationName()              { return locationName; }
+        public void    setLocationName(String v)      { this.locationName = v; }
+        public String  getComments()                  { return comments; }
+        public void    setComments(String v)          { this.comments = v; }
     }
 }

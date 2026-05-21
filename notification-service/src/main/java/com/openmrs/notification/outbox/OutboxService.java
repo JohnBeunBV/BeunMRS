@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Writes every notification attempt to the notification_log table.
@@ -33,9 +34,10 @@ public class OutboxService {
         try {
             jdbc.update("""
                 INSERT INTO notification_log
-                    (patient_uuid, channel, event_type, status, sent_at, error_message, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb)
+                    (tenant_id, patient_uuid, channel, event_type, status, sent_at, error_message, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb)
                 """,
+                event.getTenantId(),
                 event.getPatientUuid(),
                 providerName,
                 event.getEventType().name(),
@@ -45,7 +47,6 @@ public class OutboxService {
                 buildPayloadJson(event, result)
             );
         } catch (Exception ex) {
-            // Log but don't rethrow — recording failure must not block the consumer
             log.error("Failed to record notification result for appointment={}",
                     event.getAppointmentUuid(), ex);
         }
@@ -58,10 +59,11 @@ public class OutboxService {
     public void writePending(AppointmentEvent event) {
         jdbc.update("""
             INSERT INTO outbox_events
-                (aggregate_type, aggregate_id, event_type, payload)
-            VALUES ('appointment', ?, ?, ?::jsonb)
+                (tenant_id, aggregate_type, aggregate_id, event_type, payload)
+            VALUES (?, 'appointment', ?, ?, ?::jsonb)
             ON CONFLICT DO NOTHING
             """,
+            event.getTenantId(),
             event.getAppointmentUuid(),
             event.getEventType().name(),
             buildPayloadJson(event, null)
@@ -69,21 +71,20 @@ public class OutboxService {
     }
 
     /**
-     * Mark an outbox entry as published.
+     * Mark an outbox entry as published (scoped to tenant to avoid cross-tenant matches).
      */
-    public void markPublished(String appointmentUuid) {
+    public void markPublished(String appointmentUuid, UUID tenantId) {
         jdbc.update("""
             UPDATE outbox_events SET published_at = now()
-            WHERE aggregate_id = ? AND published_at IS NULL
+            WHERE aggregate_id = ? AND tenant_id = ? AND published_at IS NULL
             """,
-            appointmentUuid
+            appointmentUuid, tenantId
         );
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private String buildPayloadJson(AppointmentEvent event, NotificationResult result) {
-        // Simple JSON construction without pulling in a full serializer dependency here
         return String.format(
             "{\"appointmentUuid\":\"%s\",\"patientUuid\":\"%s\",\"eventType\":\"%s\"" +
             ",\"patientPhone\":\"%s\",\"patientEmail\":\"%s\",\"providerMsgId\":\"%s\"}",

@@ -3,6 +3,9 @@ package com.openmrs.notification.outbox;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmrs.notification.model.AppointmentEvent;
+import com.openmrs.notification.tenant.Tenant;
+import com.openmrs.notification.tenant.TenantContext;
+import com.openmrs.notification.tenant.TenantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -18,28 +21,10 @@ import java.util.UUID;
 /**
  * Outbox relay — garanteert at-least-once delivery naar RabbitMQ.
  *
- * Waarom bestaat dit?
- * ──────────────────
- * De poller schrijft elk event EERST naar outbox_events in Postgres,
- * en publiceert daarna naar RabbitMQ. Als RabbitMQ op dat moment down
- * is (of de service crasht tussen schrijven en versturen), blijft de
- * rij staan met published_at = NULL.
+ * Draait elke 30 seconden, pikt maximaal 20 ongepubliceerde rijen op
+ * en publiceert ze per tenant (TenantContext gezet per rij).
  *
- * Deze job draait elke 30 seconden en pikt zulke 'vergeten' rijen op.
- * Zodra RabbitMQ weer bereikbaar is worden ze alsnog gepubliceerd.
- *
- * Foutafhandeling:
- * ────────────────
- * - Bij elke mislukte poging: retry_count + 1
- * - Na MAX_RETRIES pogingen: failed_at wordt gezet → rij wordt niet
- *   meer opgepakt maar blijft zichtbaar in de database voor inspectie.
- *
- * Data flow:
- *   outbox_events (published_at IS NULL)
- *       → lees aggregate_id + event_type + payload
- *       → bouw AppointmentEvent
- *       → rabbitTemplate.convertAndSend(exchange, routingKey, event)
- *       → UPDATE published_at = now()
+ * Foutafhandeling: retry_count ophogen; na MAX_RETRIES → failed_at zetten.
  */
 @Component
 public class OutboxRelayJob {
@@ -53,32 +38,24 @@ public class OutboxRelayJob {
     private final JdbcTemplate   jdbc;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper   objectMapper;
+    private final TenantService  tenantService;
 
     public OutboxRelayJob(JdbcTemplate jdbc,
                           RabbitTemplate rabbitTemplate,
-                          ObjectMapper objectMapper) {
-        this.jdbc           = jdbc;
+                          ObjectMapper objectMapper,
+                          TenantService tenantService) {
+        this.jdbc          = jdbc;
         this.rabbitTemplate = rabbitTemplate;
-        this.objectMapper   = objectMapper;
+        this.objectMapper  = objectMapper;
+        this.tenantService = tenantService;
     }
 
-    /**
-     * Draait elke 30 seconden. Pikt maximaal 20 ongepubliceerde rijen op
-     * en probeert ze naar RabbitMQ te sturen.
-     *
-     * Instelbaar via: outbox.relay.fixed-delay-ms=30000
-     */
-    @Scheduled(fixedDelayString  = "${outbox.relay.fixed-delay-ms:30000}",
+    @Scheduled(fixedDelayString   = "${outbox.relay.fixed-delay-ms:30000}",
                initialDelayString = "${outbox.relay.initial-delay-ms:15000}")
     public void relay() {
 
-        // ── Stap 1: Haal ongepubliceerde rijen op ─────────────────────────
-        // published_at IS NULL → nog niet verzonden
-        // failed_at IS NULL    → nog niet permanent opgegeven
-        // LIMIT 20             → verwerk in kleine batches zodat één
-        //                        trage RabbitMQ de hele loop niet blokkeert
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, aggregate_id, event_type, payload::text AS payload, retry_count
+                SELECT id, tenant_id, aggregate_id, event_type, payload::text AS payload, retry_count
                 FROM outbox_events
                 WHERE published_at IS NULL
                   AND failed_at IS NULL
@@ -87,7 +64,6 @@ public class OutboxRelayJob {
                 """, BATCH_SIZE);
 
         if (rows.isEmpty()) {
-            // Niets te doen — log alleen op DEBUG zodat Grafana niet volloopt
             log.debug("Outbox relay: geen openstaande events");
             return;
         }
@@ -98,56 +74,49 @@ public class OutboxRelayJob {
         int failed    = 0;
 
         for (Map<String, Object> row : rows) {
+            UUID   id          = toUuid(row.get("id"));
+            UUID   tenantId    = toUuid(row.get("tenant_id"));
+            String aggregateId = (String) row.get("aggregate_id");
+            String eventType   = (String) row.get("event_type");
+            int    retryCount  = ((Number) row.get("retry_count")).intValue();
 
-            // UUID kan als java.util.UUID of String uit JDBC komen
-            UUID   id           = toUuid(row.get("id"));
-            String aggregateId  = (String) row.get("aggregate_id");  // = appointmentUuid
-            String eventType    = (String) row.get("event_type");    // SCHEDULED / UPDATED / CANCELLED
-            int    retryCount   = ((Number) row.get("retry_count")).intValue();
+            Tenant tenant = tenantService.findById(tenantId).orElse(null);
+            if (tenant == null) {
+                log.error("Relay: tenant niet gevonden id={} — entry permanent mislukt", tenantId);
+                jdbc.update("UPDATE outbox_events SET failed_at = now() WHERE id = ?", id);
+                failed++;
+                continue;
+            }
 
+            TenantContext.set(tenant);
             try {
-                // ── Stap 2: Bouw het AppointmentEvent terug op ─────────────
-                AppointmentEvent event = buildEvent(aggregateId, eventType,
-                                                    (String) row.get("payload"));
+                AppointmentEvent event = buildEvent(aggregateId, eventType, (String) row.get("payload"));
+                event.setTenantId(tenantId);
 
-                // ── Stap 3: Bepaal de RabbitMQ routing key ─────────────────
-                // appointment.scheduled → consumer stuurt bevestiging + plant reminders
-                // appointment.cancelled → consumer annuleert geplande reminders
-                // appointment.updated   → consumer herplant reminders
                 String routingKey = resolveRoutingKey(eventType);
-
-                // ── Stap 4: Publiceer naar RabbitMQ ────────────────────────
                 rabbitTemplate.convertAndSend(EXCHANGE, routingKey, event);
 
-                // ── Stap 5: Markeer als gepubliceerd ───────────────────────
                 jdbc.update("UPDATE outbox_events SET published_at = now() WHERE id = ?", id);
-
                 log.info("Relay gepubliceerd: appointmentUuid={} eventType={} routingKey={}",
                         aggregateId, eventType, routingKey);
                 published++;
 
             } catch (Exception ex) {
-
-                // ── Foutafhandeling ────────────────────────────────────────
                 int newRetryCount = retryCount + 1;
-
                 if (newRetryCount >= MAX_RETRIES) {
-                    // Permanent opgeven na MAX_RETRIES pogingen
                     jdbc.update("""
-                            UPDATE outbox_events
-                            SET retry_count = ?, failed_at = now()
-                            WHERE id = ?
-                            """, newRetryCount, id);
+                        UPDATE outbox_events SET retry_count = ?, failed_at = now() WHERE id = ?
+                        """, newRetryCount, id);
                     log.error("Outbox relay: entry permanent mislukt na {} pogingen — appointmentUuid={}",
                             MAX_RETRIES, aggregateId);
                 } else {
-                    // Tijdelijke fout — volgende run probeert opnieuw
-                    jdbc.update("UPDATE outbox_events SET retry_count = ? WHERE id = ?",
-                            newRetryCount, id);
+                    jdbc.update("UPDATE outbox_events SET retry_count = ? WHERE id = ?", newRetryCount, id);
                     log.warn("Relay poging {} van {} mislukt voor appointmentUuid={}: {}",
                             newRetryCount, MAX_RETRIES, aggregateId, ex.getMessage());
                 }
                 failed++;
+            } finally {
+                TenantContext.clear();
             }
         }
 
@@ -156,12 +125,6 @@ public class OutboxRelayJob {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    /**
-     * Bouwt een AppointmentEvent op vanuit de opgeslagen outbox-rij.
-     * De payload bevat de velden die bij het schrijven beschikbaar waren.
-     * Velden die NULL zijn (patientPhone, patientEmail) worden later
-     * ingevuld zodra Fase 2 (contactgegevens ophalen) klaar is.
-     */
     private AppointmentEvent buildEvent(String appointmentUuid,
                                         String eventType,
                                         String payloadJson) {
@@ -170,27 +133,18 @@ public class OutboxRelayJob {
         event.setEventType(AppointmentEvent.EventType.valueOf(eventType));
         event.setOccurredAt(Instant.now());
 
-        // Lees extra velden uit het opgeslagen JSON-payload
         if (payloadJson != null) {
             try {
                 Map<String, Object> payload = objectMapper.readValue(
                         payloadJson, new TypeReference<>() {});
                 event.setPatientUuid((String) payload.get("patientUuid"));
-                // patientName, appointmentTime, locationName worden opgeslagen
-                // zodra Fase 2 de ophaallogica toevoegt
             } catch (Exception e) {
-                log.debug("Payload JSON kon niet worden gelezen voor appointmentUuid={}",
-                        appointmentUuid);
+                log.debug("Payload JSON kon niet worden gelezen voor appointmentUuid={}", appointmentUuid);
             }
         }
-
         return event;
     }
 
-    /**
-     * Vertaalt het interne EventType naar de RabbitMQ routing key.
-     * Moet gelijk zijn aan de routing keys in OpenMrsAppointmentPoller.
-     */
     private String resolveRoutingKey(String eventType) {
         if (eventType == null) return "appointment.scheduled";
         return switch (eventType.toUpperCase()) {
@@ -200,7 +154,6 @@ public class OutboxRelayJob {
         };
     }
 
-    /** UUID kan als java.util.UUID of als String uit Postgres komen. */
     private UUID toUuid(Object value) {
         if (value instanceof UUID)   return (UUID) value;
         if (value instanceof String) return UUID.fromString((String) value);

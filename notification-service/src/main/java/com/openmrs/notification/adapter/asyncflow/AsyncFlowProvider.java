@@ -4,6 +4,11 @@ import com.openmrs.notification.adapter.NotificationProvider;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationChannel;
 import com.openmrs.notification.model.NotificationResult;
+import com.openmrs.notification.model.ProviderCredentials;
+import com.openmrs.notification.security.AesEncryptionService;
+import com.openmrs.notification.tenant.Tenant;
+import com.openmrs.notification.tenant.TenantService;
+import com.openmrs.notification.util.MessageHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -14,65 +19,57 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
-import com.openmrs.notification.util.MessageHelper;
-
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
- * AsyncFlow — asynchronous REST API.
+ * AsyncFlow — two-step asynchronous REST API.
  *
- * Protocol:
- *  1. POST /api/asyncflow/commands  → receive commandId
- *  2. Return immediately (Result.ok with commandId — the "submitted" state)
- *  3. A separate @Scheduled poller checks status every 10s
- *  4. When status = "completed" → write final result to notification_log
- *  5. When status = "failed"    → write failure to notification_log
+ * credentials.apiKey() = AsyncFlow API key (X-API-KEY header).
  *
- * The commandId is persisted to async_flow_commands table so we survive restarts.
+ * The status poller looks up the tenant's API key per command via
+ * async_flow_commands.tenant_id to avoid storing credentials redundantly.
  */
 @Component
 public class AsyncFlowProvider implements NotificationProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncFlowProvider.class);
 
-    private final RestTemplate restTemplate;
-    private final JdbcTemplate jdbc;
-    private final String baseUrl;
-    private final String apiKey;
-    private final String studentGroup;
+    private final RestTemplate    restTemplate;
+    private final JdbcTemplate    jdbc;
+    private final TenantService   tenantService;
+    private final String          baseUrl;
+    private final String          studentGroup;
 
     public AsyncFlowProvider(
             @Qualifier("providerRestTemplate") RestTemplate restTemplate,
             JdbcTemplate jdbc,
+            TenantService tenantService,
             @Value("${fakecomworld.base-url:http://fakecomworld:8080}") String baseUrl,
-            @Value("${provider.asyncflow.api-key:asyncflow-api-key}") String apiKey,
             @Value("${fakecomworld.student-group:group-1}") String studentGroup) {
-        this.restTemplate = restTemplate;
-        this.jdbc         = jdbc;
-        this.baseUrl      = baseUrl;
-        this.apiKey       = apiKey;
-        this.studentGroup = studentGroup;
+        this.restTemplate  = restTemplate;
+        this.jdbc          = jdbc;
+        this.tenantService = tenantService;
+        this.baseUrl       = baseUrl;
+        this.studentGroup  = studentGroup;
     }
 
     @Override public NotificationChannel channel() { return NotificationChannel.PUSH; }
     @Override public String providerName()          { return "AsyncFlow"; }
 
-    /**
-     * Step 1 — submit the command. Returns immediately with commandId.
-     * Actual delivery is confirmed by the status poller below.
-     */
     @Override
-    public NotificationResult send(AppointmentEvent event) {
+    public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-API-KEY",       apiKey);
+            headers.set("X-API-KEY",       credentials.apiKey());
             headers.set("X-STUDENT-GROUP", studentGroup);
 
-            // destination = ontvanger, content = bericht, priority = optioneel
             String destination = event.getPatientPhone() != null ? event.getPatientPhone()
                     : (event.getPatientUuid() != null ? event.getPatientUuid() : "unknown");
+
             Map<String, Object> body = Map.of(
                     "destination", destination,
                     "content",     buildMessage(event),
@@ -87,11 +84,10 @@ public class AsyncFlowProvider implements NotificationProvider {
             );
 
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                // FakeComWorld geeft trackingId terug (niet commandId)
                 String commandId = String.valueOf(resp.getBody().getOrDefault("trackingId", "unknown"));
-                log.info("[AsyncFlow] Command submitted — appointment={} commandId={}", event.getAppointmentUuid(), commandId);
-                persistCommand(commandId, event.getAppointmentUuid());
-                // Return "pending" — final outcome tracked by poller
+                log.info("[AsyncFlow] Command submitted — appointment={} commandId={}",
+                        event.getAppointmentUuid(), commandId);
+                persistCommand(commandId, event.getAppointmentUuid(), event.getTenantId());
                 return NotificationResult.ok("pending:" + commandId);
             }
             return NotificationResult.failure("HTTP " + resp.getStatusCode());
@@ -102,28 +98,36 @@ public class AsyncFlowProvider implements NotificationProvider {
         }
     }
 
-    /**
-     * Step 2 — poll for command outcomes every 10 seconds.
-     * Processes all pending commands stored in async_flow_commands.
-     */
     @Scheduled(fixedDelayString = "${asyncflow.poll.interval-ms:10000}")
     public void pollPendingCommands() {
         List<Map<String, Object>> pending = jdbc.queryForList(
-                "SELECT command_id, appointment_uuid FROM async_flow_commands WHERE status = 'pending' LIMIT 50"
+                "SELECT command_id, appointment_uuid, tenant_id FROM async_flow_commands WHERE status = 'pending' LIMIT 50"
         );
-
         if (pending.isEmpty()) return;
         log.debug("[AsyncFlow] Polling {} pending command(s)", pending.size());
 
         for (Map<String, Object> row : pending) {
-            String commandId      = (String) row.get("command_id");
+            String commandId       = (String) row.get("command_id");
             String appointmentUuid = (String) row.get("appointment_uuid");
-            checkCommandStatus(commandId, appointmentUuid);
+            UUID   tenantId        = (UUID)   row.get("tenant_id");
+
+            String apiKey = resolveApiKey(tenantId);
+            if (apiKey == null) {
+                log.warn("[AsyncFlow] Could not resolve API key for tenant={} commandId={}", tenantId, commandId);
+                continue;
+            }
+            checkCommandStatus(commandId, appointmentUuid, apiKey);
         }
     }
 
+    private String resolveApiKey(UUID tenantId) {
+        if (tenantId == null) return null;
+        Optional<Tenant> tenant = tenantService.findById(tenantId);
+        return tenant.map(tenantService::decryptProviderApiKey).orElse(null);
+    }
+
     @SuppressWarnings("unchecked")
-    private void checkCommandStatus(String commandId, String appointmentUuid) {
+    private void checkCommandStatus(String commandId, String appointmentUuid, String apiKey) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.set("X-API-KEY",       apiKey);
@@ -139,8 +143,6 @@ public class AsyncFlowProvider implements NotificationProvider {
             if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) return;
 
             String status = (String) resp.getBody().get("status");
-            log.debug("[AsyncFlow] commandId={} status={}", commandId, status);
-
             switch (status.toLowerCase()) {
                 case "completed" -> {
                     updateCommand(commandId, "completed");
@@ -148,27 +150,23 @@ public class AsyncFlowProvider implements NotificationProvider {
                     log.info("[AsyncFlow] Completed — appointment={} commandId={}", appointmentUuid, commandId);
                 }
                 case "failed" -> {
-                    String reason = (String) resp.getBody().getOrDefault("error", "unknown");
                     updateCommand(commandId, "failed");
                     updateNotificationLog(appointmentUuid, "failed");
-                    log.warn("[AsyncFlow] Failed — appointment={} commandId={} reason={}", appointmentUuid, commandId, reason);
+                    log.warn("[AsyncFlow] Failed — appointment={} commandId={}", appointmentUuid, commandId);
                 }
                 default -> log.debug("[AsyncFlow] Still processing — commandId={}", commandId);
             }
-
         } catch (Exception ex) {
             log.error("[AsyncFlow] Status check error — commandId={}", commandId, ex);
         }
     }
 
-    // ── DB helpers ────────────────────────────────────────────────────────────
-
-    private void persistCommand(String commandId, String appointmentUuid) {
+    private void persistCommand(String commandId, String appointmentUuid, UUID tenantId) {
         jdbc.update("""
-            INSERT INTO async_flow_commands (command_id, appointment_uuid, status, submitted_at)
-            VALUES (?, ?, 'pending', now())
+            INSERT INTO async_flow_commands (command_id, tenant_id, appointment_uuid, status, submitted_at)
+            VALUES (?, ?, ?, 'pending', now())
             ON CONFLICT (command_id) DO NOTHING
-            """, commandId, appointmentUuid);
+            """, commandId, tenantId, appointmentUuid);
     }
 
     private void updateCommand(String commandId, String status) {
