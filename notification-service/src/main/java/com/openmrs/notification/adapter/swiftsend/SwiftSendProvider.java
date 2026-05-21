@@ -55,6 +55,7 @@ public class SwiftSendProvider implements NotificationProvider {
                     MessageHelper.mask(recipient), event.getAppointmentUuid());
 
             Map<String, Object> body = Map.of(
+                    "type",       "SMS",
                     "recipients", new String[]{ recipient },
                     "content",    buildMessage(event)
             );

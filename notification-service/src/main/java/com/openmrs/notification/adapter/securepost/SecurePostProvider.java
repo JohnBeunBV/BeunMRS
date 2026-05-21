@@ -90,6 +90,7 @@ public class SecurePostProvider implements NotificationProvider {
                     MessageHelper.mask(recipient), event.getAppointmentUuid());
 
             Map<String, Object> body = Map.of(
+                    "format",    "EMAIL",
                     "recipient", recipient,
                     "subject",   subjectFor(event),
                     "body",      buildMessage(event)
@@ -103,7 +104,7 @@ public class SecurePostProvider implements NotificationProvider {
             );
 
             if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
-                String id = String.valueOf(resp.getBody().getOrDefault("messageId", "unknown"));
+                String id = String.valueOf(resp.getBody().getOrDefault("trackingId", "unknown"));
                 log.info("[SecurePost] Sent OK — appointment={} msgId={}", event.getAppointmentUuid(), id);
                 return NotificationResult.ok(id);
             }

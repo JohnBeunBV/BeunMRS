@@ -57,8 +57,8 @@ public class LegacyLinkProvider implements NotificationProvider {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.TEXT_XML);
+            headers.set("Accept",          MediaType.APPLICATION_XML_VALUE);
             headers.set("Authorization",   basicAuth);
-            headers.set("SOAPAction",      "SendMessage");
             headers.set("X-STUDENT-GROUP", studentGroup);
 
             ResponseEntity<String> resp = restTemplate.exchange(
