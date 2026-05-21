@@ -89,6 +89,7 @@ Poller itereert over alle actieve tenants en bouwt per tenant een `RestTemplate`
 | Outbox relay           | `OutboxRelayJob` herprobeert elke 30s, max 5 pogingen, dan `failed_at`        |
 | Duplicate guard        | `seen_appointments` tabel, scoped op `(appointment_uuid, tenant_id)`          |
 | Reminder scheduling    | `scheduled_notifications` tabel, `ReminderDispatchJob` pollt elke 60s        |
+| **Provider retry** ⚠️  | **Ontbreekt nog** — `notification_log` failed entries (429/503) worden niet herproeeerd. Vereist door NFR-6 en NFR-7. Zie **8m**. |
 
 ### Database ✅ (8 tabellen)
 
@@ -208,7 +209,59 @@ Content-Type: application/json
 
 ---
 
-### ✅ Fase 1 — Snelle bugfixes
+### 🎯 Prioriteiten — Nog te doen (in volgorde van aanpak)
+
+> Werk dit van boven naar beneden af. Tier 1 eerst — zonder deze stappen mist het systeem verplichte NFRs.
+
+#### 🔴 TIER 1 — Kritieke code (eerst aanpakken)
+
+- [ ] **8m** — Provider-level retry bij 429/503 **(NFR-6 + NFR-7 — expliciet vereist)**
+  - `FailedNotificationRetryJob`: herprobeert `notification_log` met `status='failed'` en `retry_count < 3`
+  - Exponential backoff: 5 min → 15 min → 45 min. Na 3× → permanent `failed`.
+  - Vereist: `retry_count INT DEFAULT 0` + `next_retry_at TIMESTAMPTZ` op `notification_log`
+- [ ] **8j** — AppointmentReconciler 500-bug fixen
+  - Huidige fout: `GET ?lastUpdated=...` vereist `?uuid`. Geeft 500.
+  - Fix: omschrijven naar `POST /ws/rest/v1/appointment/search` (zelfde als primaire poller)
+
+#### 🟠 TIER 2 — Verplichte deliverables (opdracht)
+
+- [ ] **7h** — `docs/README-beheerder.md` schrijven **(Deliverable 1 — technische documentatie)**
+  - Koppeling met OpenMRS (REST v1, poller-interval, credentials)
+  - Stap-voor-stap tenant registreren + eerste afspraak testen
+  - Beveiliging: API key rotatie, AES-256, TLS 1.3 productie-setup (NGINX + Let's Encrypt)
+  - Monitoring: Grafana URLs, dashboards, alerts
+  - Charactersets (UTF-8), HL7 ACK-equivalent uitleg
+- [ ] **7i** — Root `README.md` bijwerken **(Deliverable 2 — opstartinstructies)**
+  - Vereisten (Docker, poorten), `docker compose up -d`, voorbeeld-request, productie-env vars
+- ~~**ADR-005/006/007**~~ — ✅ **Niet nodig als aparte bestanden** — ADR-001 t/m ADR-004 dekken alle architectuurkeuzes af. De logica van multi-tenant, provider routing en encryptie staat gedocumenteerd in de bestaande ADRs en CLAUDE.md zelf.
+- ~~**7m–7p**~~ — ✅ **C4-diagrammen bestaan al** — L1, L2, L3 en procesvisualisatie zijn aanwezig.
+- [ ] **7q** — Realisatielogboek: gebruikte ontwikkeltools **(Deliverable 4)**
+- [ ] **7r** — Realisatielogboek: AI-tools + representatieve voorbeelden **(Deliverable 4)**
+- [ ] **7s** — Realisatielogboek: commits per teamlid **(Deliverable 4)**
+
+#### 🟡 TIER 3 — Tests + compliance-documentatie
+
+- [ ] **6a–6j** — Unit tests schrijven **(Deliverable 5 — testrapportage)**
+  - Zie uitgewerkte lijst in Fase 6 hieronder
+- [ ] **8i** — TLS 1.3 / HTTPS documentatie (NFR-5) — in `README-beheerder.md` verwerken
+- [ ] **8k** — Karaktersets aantonen (NFR-8) — UTF-8 end-to-end bewijzen + testbericht niet-Latijnse tekens
+- [ ] **8l** — HL7 ACK-mechanisme documenteren (NFR-6) — uitleggen als HL7-ACK-equivalent
+- [ ] **7t** — Testrapport schrijven (scenario's, resultaten, dekking)
+- [ ] **7u** — Uitbreidbaarheid aantonen (nieuwe provider = alleen nieuwe klasse)
+
+#### 🟢 TIER 4 — End-to-end verificatie (laatste stap)
+
+- [ ] **7a** — `docker compose down -v && docker compose up -d` — schone start met nieuw schema
+- [ ] **7b** — Tenant registreren via http://localhost:3001 of Postman
+- [ ] **7c** — Afspraak aanmaken → logs → `scheduled_notifications` controleren
+- [ ] **7d** — Afspraak annuleren → reminders krijgen `status = 'cancelled'`
+- [ ] **7e** — Twee tenants registreren (SwiftSend + SecurePost)
+- [ ] **7f** — Per tenant afspraak → correcte provider in logs + `tenant_id` in `notification_log`
+- [ ] **7g** — Tenant A API key → alleen tenant A data zichtbaar
+
+---
+
+### ✅ Afgerond — Fase 1 — Snelle bugfixes
 
 - [x] **1a.** `MockMessagingProvider` uitschakelen — `mock.messaging.enabled: false`
 - [x] **1b.** Duplicate import verwijderd uit `SwiftSendProvider.java`
@@ -217,7 +270,7 @@ Content-Type: application/json
 
 ---
 
-### ✅ Fase 2 — Patiënt contactgegevens ophalen
+### ✅ Afgerond — Fase 2 — Patiënt contactgegevens ophalen
 
 **Attribuutnamen geverifieerd via `GET /ws/rest/v1/personattributetype`:**
 - Telefoon → `"Telephone Number"`
@@ -231,7 +284,7 @@ Content-Type: application/json
 
 ---
 
-### ✅ Fase 3 — Outbox relay loop
+### ✅ Afgerond — Fase 3 — Outbox relay loop
 
 - [x] **3a.** `OutboxRelayJob.java` — `@Scheduled(fixedDelay = 30_000)`, batch 20, per tenant
 - [x] **3b.** Query scoped op `tenant_id`, `published_at IS NULL AND failed_at IS NULL`
@@ -241,7 +294,7 @@ Content-Type: application/json
 
 ---
 
-### ✅ Fase 4 — Reminder scheduling 24h + 1u
+### ✅ Afgerond — Fase 4 — Reminder scheduling 24h + 1u
 
 - [x] **4a.** `scheduled_notifications` tabel — JSONB payload zodat dispatch job geen extra OpenMRS-call nodig heeft
 - [x] **4b.** `ReminderScheduler.java` — `scheduleReminders()` (2 rijen), `cancelReminders()` (per tenant_id)
@@ -252,7 +305,7 @@ Content-Type: application/json
 
 ---
 
-### ✅ Fase 5 — Per-tenant RestTemplate + provider isolatie
+### ✅ Afgerond — Fase 5 — Per-tenant RestTemplate + provider isolatie
 
 - [x] **5a.** `RestTemplateFactory.java` — bouwt per poll-cyclus een `RestTemplate` met de credentials van die tenant
 - [x] **5b.** `AppConfig.java` — `openmrsRestTemplate` singleton verwijderd; `jsonMessageConverter(ObjectMapper)` gebruikt Spring-managed ObjectMapper voor consistente serialisatie
@@ -261,7 +314,7 @@ Content-Type: application/json
 
 ---
 
-### ⚪ Fase 6 — Tests schrijven _(4-8 uur)_
+### 🟡 TIER 3 — Fase 6 — Tests schrijven _(4-8 uur)_ — zie prioriteiten hierboven
 
 - [ ] **6a.** `NotificationDispatcherTest` — mock providers, verifieer routing naar één provider per tenant
 - [ ] **6b.** `SwiftSendProviderTest` — mock RestTemplate, verifieer `X-API-KEY` header en berichtinhoud
@@ -276,7 +329,7 @@ Content-Type: application/json
 
 ---
 
-### ✅ Fase 8 — Opdrachtgaps oplossen
+### ✅ Afgerond — Fase 8 — Opdrachtgaps oplossen (openstaande items in Tier 1 hierboven)
 
 #### ✅ Snel opgelost
 
@@ -325,9 +378,16 @@ Content-Type: application/json
 
 - [ ] **8l.** **HL7 ACK-mechanisme documenteren (NFR-6)** — de opdracht noemt expliciet acknowledgements. RabbitMQ `auto-ack` + de `notification_log`-status dekt dit functioneel. Dit moet uitgelegd worden in de technische documentatie als de HL7-ACK-equivalent binnen onze architectuur.
 
+- [ ] **8m.** **Provider-level retry bij 429/503 (NFR-6 + NFR-7)** — vereist door:
+  - NFR-6: *"Queueing en retry-mechanismen bij netwerkproblemen"*
+  - NFR-7: *"Downtime bij communicatieproviders... dient te worden opgevangen door een fallback- of retrymechanisme"*
+  - Huidige situatie: `notification_log` entries met `status = 'failed'` worden nooit herproeeerd. Een 503 van FakeComWorld/echte provider = permanent verloren bericht.
+  - Oplossing: nieuwe `FailedNotificationRetryJob` (`@Scheduled`) die `notification_log` rijen met `status = 'failed'` en `retry_count < 3` herprobeert, met exponential backoff (5 min → 15 min → 45 min). Na 3× → permanent `failed`.
+  - Vereist: `retry_count INT DEFAULT 0` + `next_retry_at TIMESTAMPTZ` kolommen op `notification_log`.
+
 ---
 
-### ✅ Fase 9 — Multi-tenant SaaS registratie & configuratie
+### ✅ Afgerond — Fase 9 — Multi-tenant SaaS registratie & configuratie
 
 #### 9a. Tenant datamodel ✅
 - `tenants` tabel: id, slug, display_name, api_key_hash (SHA-256), api_key_enc (AES-256-GCM), openmrs_host, openmrs_user, openmrs_password_enc, provider_name (CHECK constraint), provider_api_key_enc, provider_extra_enc, **timezone** (IANA, DEFAULT 'Europe/Amsterdam'), active, created_at
@@ -371,63 +431,8 @@ Content-Type: application/json
 
 ---
 
-### ⚪ Fase 7 — Eindcontrole & oplevering
+### ℹ️ Fase 7 — Eindcontrole & oplevering (verwerkt in Tier 2/4 prioriteiten hierboven)
 
-#### Setup
-
-- [ ] **7a.** `docker compose down -v && docker compose up -d` — schone start met nieuw schema
-- [ ] **7b.** Tenant registreren via http://localhost:3001 of Postman
-
-#### Single-tenant flow
-
-- [ ] **7c.** Afspraak aanmaken via Postman → logs volgen → `scheduled_notifications` controleren
-- [ ] **7d.** Afspraak annuleren → reminders krijgen `status = 'cancelled'`
-
-#### Multi-tenant isolatie
-
-- [ ] **7e.** Twee tenants registreren (SwiftSend + SecurePost)
-- [ ] **7f.** Per tenant afspraak → correcte provider in logs + `tenant_id` in `notification_log`
-- [ ] **7g.** Tenant A API key → alleen tenant A data zichtbaar (watermarks, logs)
-
-#### Deliverable 1 — Technische documentatie (NFR-2)
-
-- [ ] **7h.** `docs/README-beheerder.md` schrijven voor technisch beheerders van een OpenMRS-organisatie:
-  - Hoe de koppeling met OpenMRS werkt (REST v1, credentials, poller-interval)
-  - Stap-voor-stap: tenant registreren, API key opslaan, eerste afspraak testen
-  - Beveiliging: API key rotatie, AES-256 encryptie, TLS 1.3 productie-setup (NGINX)
-  - Monitoring: Grafana URLs, wat de dashboards tonen, hoe alerts in te stellen
-  - Charactersets: UTF-8 end-to-end (DB, RabbitMQ, HTTP)
-  - HL7-compliance uitleg: hoe ACK/retry past binnen de architectuur
-
-#### Deliverable 2 — Codebase + opstartinstructies
-
-- [ ] **7i.** `README.md` (root) schrijven met opstartinstructies voor DevOps:
-  - Vereisten (Docker, poorten)
-  - `docker compose up -d` commando
-  - Voorbeeld-request om de oplossing in werking te zetten (tenant registreren + afspraak maken)
-  - Omgevingsvariabelen die gezet moeten worden voor productie
-
-#### Deliverable 3 — ADR-logboek aanvullen
-
-- [ ] **7j.** ADR-004: Multi-tenant datamodel (waarom tenant_id in elke tabel, waarom SHA-256 hash voor API key lookup)
-- [ ] **7k.** ADR-005: Provider routing (waarom één provider per tenant, waarom interface-patroon, hoe uitbreiden)
-- [ ] **7l.** ADR-006: Encryptie en PII-bescherming (AES-256-GCM keuze, masking in logs, 14-dagenretentie)
-
-#### Deliverable 3 — C4-diagrammen + procesvisualisatie
-
-- [ ] **7m.** C4 Level 1 (System Context): communicatiemodule ↔ OpenMRS ↔ patiënt ↔ messaging providers
-- [ ] **7n.** C4 Level 2 (Container): notification-svc, PostgreSQL, RabbitMQ, FakeComWorld, Grafana/Loki, OpenMRS
-- [ ] **7o.** C4 Level 3 (Component): poller, consumer, dispatcher, outbox relay, reminder scheduler, tenant filter, adapters
-- [ ] **7p.** Procesvisualisatie: sequentiediagram of flowchart van het volledige pad van afspraakaanmaken → notificatie verstuurd → reminder → logging
-
-#### Deliverable 4 — Realisatielogboek
-
-- [ ] **7q.** Overzicht gebruikte ontwikkeltools (IDE's, Docker Desktop, Postman, etc.)
-- [ ] **7r.** Overzicht AI-tools met representatieve voorbeelden van prompts / screenshots
-- [ ] **7s.** Overzicht commits per teamlid (naam + link naar commits op GitHub/GitLab)
-
-#### Deliverable 5 — Testrapportage
-
-- [ ] **7t.** Tests schrijven (zie Fase 6 voor de lijst)
-- [ ] **7u.** Testrapport: beschrijf welke scenario's getest zijn, resultaten, dekking
-- [ ] **7v.** Aantonen van uitbreidbaarheid: laat zien dat een nieuwe provider toevoegen alleen een nieuwe klasse vereist (via test of beschrijving)
+> Alle Fase 7 taken staan uitgesplitst in de prioriteiten-tabel bovenaan.
+> - **ADR-logboek (Deliverable 3)**: ✅ compleet — ADR-001 t/m ADR-004 zijn aanwezig en dekken alle keuzes.
+> - **C4-diagrammen + procesvisualisatie (Deliverable 3)**: ✅ al aanwezig.

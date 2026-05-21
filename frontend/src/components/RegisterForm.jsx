@@ -114,7 +114,8 @@ export default function RegisterForm() {
         </div>
 
         <p className="api-key-hint">
-          Stuur deze key mee als <code>X-API-Key</code> header bij elk verzoek aan de notificatieservice.
+          De notificatieservice pollt uw OpenMRS automatisch en verstuurt reminders — u hoeft verder niets te doen.
+          Bewaar deze API key op een veilige plek voor eventuele technische integraties in de toekomst.
         </p>
 
         <button className="btn-secondary" onClick={() => { setResult(null); setForm(EMPTY_FORM) }}>

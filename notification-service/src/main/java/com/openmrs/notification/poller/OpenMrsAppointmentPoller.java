@@ -118,6 +118,31 @@ public class OpenMrsAppointmentPoller {
         }
 
         log.info("Found {} appointment(s) for tenant={}", appointments.size(), slug);
+
+        // Bootstrap detection: first-ever poll for this tenant has no seen history yet.
+        // Split behaviour:
+        //   - Past appointments  → mark as seen silently (patient already informed elsewhere)
+        //   - Future appointments → process normally (patient still expects a confirmation)
+        // This prevents flooding providers while still covering appointments that are upcoming.
+        boolean isFirstPoll = isFirstPollForTenant(tenant.getId());
+        if (isFirstPoll) {
+            long pastCount   = appointments.stream().filter(a -> a.getStartDateTime() != null && a.getStartDateTime().isBefore(now)).count();
+            long futureCount = appointments.size() - pastCount;
+            log.info("First poll for tenant={} — bootstrapping {} past appointment(s) silently, {} future appointment(s) will be notified",
+                    slug, pastCount, futureCount);
+            // Silently seed past appointments so they are never re-processed
+            for (RestAppointment apt : appointments) {
+                if (apt.getStartDateTime() != null && apt.getStartDateTime().isBefore(now)) {
+                    markSeen(apt.getUuid(), tenant.getId(), apt.getStatus());
+                }
+            }
+            // Future appointments fall through to the normal processing loop below
+            appointments = appointments.stream()
+                    .filter(a -> a.getStartDateTime() == null || !a.getStartDateTime().isBefore(now))
+                    .toList();
+            if (appointments.isEmpty()) return;
+        }
+
         int queued = 0;
         for (RestAppointment apt : appointments) {
             try {
@@ -252,6 +277,19 @@ public class OpenMrsAppointmentPoller {
     }
 
     // ── Duplicate / change guard ─────────────────────────────────────────────
+
+    /**
+     * Returns true when this tenant has no entries in seen_appointments yet,
+     * meaning this is the very first poll cycle for this tenant.
+     * Used to bootstrap the seen table without firing notifications for all
+     * pre-existing appointments in OpenMRS.
+     */
+    private boolean isFirstPollForTenant(java.util.UUID tenantId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM seen_appointments WHERE tenant_id = ?",
+                Integer.class, tenantId);
+        return count == null || count == 0;
+    }
 
     private String getSeenStatus(String appointmentUuid, java.util.UUID tenantId) {
         try {
