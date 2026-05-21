@@ -9,9 +9,33 @@ const PROVIDER_FIELDS = {
   AsyncFlow:  { keyLabel: 'API Key',    keyPlaceholder: 'asyncflow-api-key', extraLabel: null },
 }
 
+const TIMEZONES = [
+  { value: 'Europe/Amsterdam',   label: 'Europe/Amsterdam (CET/CEST)' },
+  { value: 'Europe/London',      label: 'Europe/London (GMT/BST)' },
+  { value: 'Europe/Paris',       label: 'Europe/Paris (CET/CEST)' },
+  { value: 'Europe/Berlin',      label: 'Europe/Berlin (CET/CEST)' },
+  { value: 'Europe/Istanbul',    label: 'Europe/Istanbul (TRT)' },
+  { value: 'Africa/Cairo',       label: 'Africa/Cairo (EET)' },
+  { value: 'Africa/Nairobi',     label: 'Africa/Nairobi (EAT)' },
+  { value: 'Asia/Dubai',         label: 'Asia/Dubai (GST)' },
+  { value: 'Asia/Kolkata',       label: 'Asia/Kolkata (IST)' },
+  { value: 'Asia/Bangkok',       label: 'Asia/Bangkok (ICT)' },
+  { value: 'Asia/Singapore',     label: 'Asia/Singapore (SGT)' },
+  { value: 'Asia/Shanghai',      label: 'Asia/Shanghai (CST)' },
+  { value: 'Asia/Tokyo',         label: 'Asia/Tokyo (JST)' },
+  { value: 'Australia/Sydney',   label: 'Australia/Sydney (AEST/AEDT)' },
+  { value: 'America/New_York',   label: 'America/New_York (EST/EDT)' },
+  { value: 'America/Chicago',    label: 'America/Chicago (CST/CDT)' },
+  { value: 'America/Denver',     label: 'America/Denver (MST/MDT)' },
+  { value: 'America/Los_Angeles',label: 'America/Los_Angeles (PST/PDT)' },
+  { value: 'America/Sao_Paulo',  label: 'America/Sao_Paulo (BRT)' },
+  { value: 'Pacific/Auckland',   label: 'Pacific/Auckland (NZST/NZDT)' },
+]
+
 const EMPTY_FORM = {
   slug: '',
   displayName: '',
+  timezone: 'Europe/Amsterdam',
   openmrsHost: 'http://gateway/openmrs',
   openmrsUser: 'admin',
   openmrsPassword: '',
@@ -118,6 +142,14 @@ export default function RegisterForm() {
           <label htmlFor="displayName">Naam</label>
           <input id="displayName" name="displayName" value={form.displayName}
             onChange={handleChange} placeholder="Amsterdam UMC" required />
+        </div>
+        <div className="field">
+          <label htmlFor="timezone">Tijdzone <span className="hint">bepaalt weergave tijden in patiëntberichten</span></label>
+          <select id="timezone" name="timezone" value={form.timezone} onChange={handleChange}>
+            {TIMEZONES.map(tz => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
         </div>
       </fieldset>
 
