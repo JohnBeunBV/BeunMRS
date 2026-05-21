@@ -1,5 +1,7 @@
 package com.openmrs.notification.outbox;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openmrs.notification.model.AppointmentEvent;
 import com.openmrs.notification.model.NotificationResult;
 import com.openmrs.notification.util.MessageHelper;
@@ -16,6 +18,11 @@ import java.util.UUID;
  * Writes every notification attempt to the notification_log table.
  * Also manages the outbox_events table used by the relay loop for
  * guaranteed at-least-once delivery even through provider outages.
+ *
+ * <p>The JSONB payload stored in notification_log includes all non-PII fields
+ * needed to reconstruct an AppointmentEvent for retry (appointmentTime,
+ * locationName, comments, timezone, patientName). Phone and e-mail are always
+ * masked before storage (NFR-5).</p>
  */
 @Service
 public class OutboxService {
@@ -23,9 +30,11 @@ public class OutboxService {
     private static final Logger log = LoggerFactory.getLogger(OutboxService.class);
 
     private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
 
-    public OutboxService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public OutboxService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc         = jdbc;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -88,21 +97,40 @@ public class OutboxService {
     /**
      * Builds the JSONB payload stored in notification_log and outbox_events.
      *
-     * NFR-5: phone and e-mail are masked before storage so log files never
-     * contain unencrypted personal data (e.g. "061****678", "b****@example.com").
-     * The actual contact details are only held in memory during the send attempt.
+     * <p>NFR-5: phone and e-mail are always masked before storage
+     * (e.g. "+316****678", "b****@example.com"). Real contact details are only
+     * held in memory during the send attempt.</p>
+     *
+     * <p>Non-PII fields (appointmentTime, locationName, comments, timezone,
+     * patientName) are stored unmasked so that {@code FailedNotificationRetryJob}
+     * can reconstruct the event without an extra OpenMRS call for those fields.
+     * Phone/e-mail are re-fetched from OpenMRS at retry time.</p>
      */
     private String buildPayloadJson(AppointmentEvent event, NotificationResult result) {
-        return String.format(
-            "{\"appointmentUuid\":\"%s\",\"patientUuid\":\"%s\",\"eventType\":\"%s\"" +
-            ",\"patientPhone\":\"%s\",\"patientEmail\":\"%s\",\"providerMsgId\":\"%s\"}",
-            nvl(event.getAppointmentUuid()),
-            nvl(event.getPatientUuid()),
-            event.getEventType(),
-            MessageHelper.mask(event.getPatientPhone()),
-            MessageHelper.mask(event.getPatientEmail()),
-            result != null && result.getProviderMessageId() != null ? result.getProviderMessageId() : ""
-        );
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("appointmentUuid", nvl(event.getAppointmentUuid()));
+            node.put("patientUuid",     nvl(event.getPatientUuid()));
+            node.put("patientName",     nvl(event.getPatientName()));
+            node.put("eventType",       event.getEventType() != null ? event.getEventType().name() : "");
+            // NFR-5: masked before storage
+            node.put("patientPhone",    MessageHelper.mask(event.getPatientPhone()));
+            node.put("patientEmail",    MessageHelper.mask(event.getPatientEmail()));
+            // Non-PII fields — needed by retry job to reconstruct the event
+            if (event.getAppointmentTime() != null) {
+                node.put("appointmentTime", event.getAppointmentTime().toString());
+            }
+            node.put("locationName", nvl(event.getLocationName()));
+            node.put("comments",     nvl(event.getComments()));
+            node.put("timezone",     nvl(event.getTimezone()));
+            node.put("providerMsgId",
+                    result != null && result.getProviderMessageId() != null
+                            ? result.getProviderMessageId() : "");
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception ex) {
+            log.error("Failed to build payload JSON for appointment={}", event.getAppointmentUuid(), ex);
+            return "{}";
+        }
     }
 
     private String nvl(String s) { return s != null ? s : ""; }

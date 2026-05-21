@@ -64,6 +64,9 @@ CREATE INDEX IF NOT EXISTS idx_seen_appointments_queued
     ON seen_appointments (tenant_id, queued_at DESC);
 
 -- ── Notification log (audit trail) ───────────────────────────────────────
+-- status values: pending | sent | failed | permanently_failed
+-- retry_count:   number of retry attempts made after the initial failure
+-- next_retry_at: when the next retry should be attempted (NULL = ready immediately)
 CREATE TABLE IF NOT EXISTS notification_log (
     id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id      UUID        NOT NULL REFERENCES tenants(id),
@@ -74,12 +77,18 @@ CREATE TABLE IF NOT EXISTS notification_log (
     sent_at        TIMESTAMPTZ,
     error_message  TEXT,
     payload        JSONB,
+    retry_count    INT         NOT NULL DEFAULT 0,
+    next_retry_at  TIMESTAMPTZ,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_notification_log_tenant
     ON notification_log (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notification_log_status
     ON notification_log (tenant_id, status, created_at DESC);
+-- Partial index for the retry job — only scans rows that actually need retrying
+CREATE INDEX IF NOT EXISTS idx_notification_log_retry
+    ON notification_log (next_retry_at)
+    WHERE status = 'failed' AND retry_count < 3;
 
 -- ── AsyncFlow pending commands ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS async_flow_commands (

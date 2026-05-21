@@ -9,13 +9,15 @@ import com.openmrs.notification.tenant.TenantContext;
 import com.openmrs.notification.tenant.TenantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,10 @@ import java.util.UUID;
 /**
  * Backup reconciliator — catch-up mechanism for missed events.
  * Runs every 5 minutes for every active tenant.
+ *
+ * <p>Uses {@code POST /ws/rest/v1/appointment/search} with a sliding window
+ * from the watermark to now+30 days — identical to the primary poller.
+ * The old {@code GET ?lastUpdated=} endpoint was broken (returned HTTP 500).</p>
  */
 @Component
 public class AppointmentReconciler {
@@ -116,20 +122,48 @@ public class AppointmentReconciler {
 
     // ── OpenMRS fetch ──────────────────────────────────────────────────────────
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private List<AppointmentEvent> fetchFromOpenMRS(RestTemplate rt, Tenant tenant, Instant since) {
-        String url = tenant.getOpenmrsHost()
-                + "/ws/rest/v1/appointment?lastUpdated=" + since + "&v=full";
-        try {
-            ResponseEntity<Map> response = rt.getForEntity(url, Map.class);
-            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) return List.of();
+    private static final DateTimeFormatter ISO_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC);
+    private static final int RECONCILE_WINDOW_DAYS = 30;
 
-            List<Map<String, Object>> results =
-                    (List<Map<String, Object>>) response.getBody().getOrDefault("results", List.of());
-            return results.stream().map(r -> mapToEvent(r, tenant)).toList();
+    /**
+     * Fetches appointments via {@code POST /ws/rest/v1/appointment/search}.
+     *
+     * Window: watermark (since) → now + 30 days.
+     * The response is a JSON array (not wrapped in a "results" key).
+     *
+     * The old implementation used {@code GET ?lastUpdated=...} which always
+     * returned HTTP 500 — that endpoint requires {@code ?uuid}, not a timestamp.
+     */
+    @SuppressWarnings("null") // HttpMethod.POST is provably non-null; false positive from Eclipse null-type checker
+    private List<AppointmentEvent> fetchFromOpenMRS(RestTemplate rt, Tenant tenant, Instant since) {
+        String  url       = tenant.getOpenmrsHost() + "/ws/rest/v1/appointment/search";
+        Instant windowEnd = Instant.now().plus(RECONCILE_WINDOW_DAYS, ChronoUnit.DAYS);
+
+        Map<String, String> body = Map.of(
+                "startDate", ISO_FMT.format(since),
+                "endDate",   ISO_FMT.format(windowEnd));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        try {
+            ResponseEntity<List<Map<String, Object>>> response = rt.exchange(
+                    url, HttpMethod.POST,
+                    new HttpEntity<>(body, headers),
+                    new org.springframework.core.ParameterizedTypeReference<>() {});
+
+            List<Map<String, Object>> rows = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || rows == null) {
+                return List.of();
+            }
+            return rows.stream()
+                    .map(r -> mapToEvent(r, tenant))
+                    .toList();
 
         } catch (Exception ex) {
-            log.warn("OpenMRS reconciler poll failed for tenant={}: {}", tenant.getSlug(), ex.getMessage());
+            log.warn("Reconciler POST /appointment/search failed for tenant={}: {}",
+                    tenant.getSlug(), ex.getMessage());
             return List.of();
         }
     }

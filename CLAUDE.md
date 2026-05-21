@@ -89,7 +89,7 @@ Poller itereert over alle actieve tenants en bouwt per tenant een `RestTemplate`
 | Outbox relay           | `OutboxRelayJob` herprobeert elke 30s, max 5 pogingen, dan `failed_at`        |
 | Duplicate guard        | `seen_appointments` tabel, scoped op `(appointment_uuid, tenant_id)`          |
 | Reminder scheduling    | `scheduled_notifications` tabel, `ReminderDispatchJob` pollt elke 60s        |
-| **Provider retry** ⚠️  | **Ontbreekt nog** — `notification_log` failed entries (429/503) worden niet herproeeerd. Vereist door NFR-6 en NFR-7. Zie **8m**. |
+| Provider retry ✅       | `FailedNotificationRetryJob` — elke 60s, max 3 pogingen, exponential backoff: 5 → 15 → 45 min, dan `permanently_failed` |
 
 ### Database ✅ (8 tabellen)
 
@@ -130,7 +130,7 @@ Poller itereert over alle actieve tenants en bouwt per tenant een `RestTemplate`
 ## Bekende valkuilen
 
 - **`comments` via search API altijd null** — `POST /ws/rest/v1/appointment/search` retourneert altijd `"comments": null`. Opgelost: `enrichComments()` doet een extra `GET /ws/rest/v1/appointment?uuid={uuid}` voor nieuwe/gewijzigde afspraken. Dit werkt correct — comments worden meegegeven in alle berichten en reminder-payloads.
-- **AppointmentReconciler 500-bug** — Reconciler roept `GET /ws/rest/v1/appointment?lastUpdated=...` aan, maar die endpoint vereist `?uuid`. Dit geeft een 500. De reconciler is puur een backup; de primaire poller werkt correct. Fix: reconciler omschrijven of uitschakelen.
+- **AppointmentReconciler 500-bug** — ✅ Opgelost. Was: `GET ?lastUpdated=...` → 500. Nu: `POST /ws/rest/v1/appointment/search` (zelfde als primaire poller).
 - **FHIR2 Appointment niet ondersteund** — `GET /ws/fhir2/R4/Appointment` → `HAPI-0302`. De FHIR2 module heeft geen Appointment-mapping. Poller gebruikt REST v1.
 - **OpenMRS start traag** — eerste opstart 5-10 minuten (Liquibase + module loading). Wacht op `Server startup in [XXXX] milliseconds`.
 - **Schone herstart na schema-wijziging** — bij wijzigingen aan `00_schema.sql` altijd `docker compose down -v && docker compose up -d` uitvoeren. Volumes worden niet automatisch bijgewerkt.
@@ -215,13 +215,15 @@ Content-Type: application/json
 
 #### 🔴 TIER 1 — Kritieke code (eerst aanpakken)
 
-- [ ] **8m** — Provider-level retry bij 429/503 **(NFR-6 + NFR-7 — expliciet vereist)**
-  - `FailedNotificationRetryJob`: herprobeert `notification_log` met `status='failed'` en `retry_count < 3`
-  - Exponential backoff: 5 min → 15 min → 45 min. Na 3× → permanent `failed`.
-  - Vereist: `retry_count INT DEFAULT 0` + `next_retry_at TIMESTAMPTZ` op `notification_log`
-- [ ] **8j** — AppointmentReconciler 500-bug fixen
-  - Huidige fout: `GET ?lastUpdated=...` vereist `?uuid`. Geeft 500.
-  - Fix: omschrijven naar `POST /ws/rest/v1/appointment/search` (zelfde als primaire poller)
+- [x] **8m** — Provider-level retry bij 429/503 ✅ **(NFR-6 + NFR-7)**
+  - `FailedNotificationRetryJob` in `scheduler/` — `@Scheduled(fixedDelay=60s)`
+  - Exponential backoff: poging 1 → +5 min, poging 2 → +15 min, poging 3 → `permanently_failed`
+  - `notification_log`: `retry_count INT DEFAULT 0` + `next_retry_at TIMESTAMPTZ` + partial index
+  - `OutboxService.buildPayloadJson()` gebruikt nu ObjectMapper + slaat non-PII velden op voor retry-reconstructie
+  - Phone/email worden bij retry opnieuw opgehaald via `PersonContactService` (waren gemaskeerd — NFR-5)
+- [x] **8j** — AppointmentReconciler 500-bug gefixed ✅
+  - Was: `GET ?lastUpdated=...` → HTTP 500 (endpoint vereist `?uuid`)
+  - Nu: `POST /ws/rest/v1/appointment/search` met window `watermark → now+30 dagen` (zelfde als primaire poller)
 
 #### 🟠 TIER 2 — Verplichte deliverables (opdracht)
 
