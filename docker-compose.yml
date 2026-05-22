@@ -157,6 +157,8 @@ services:
       retries: 10
 
   # ── Notification Service (Spring Boot) ─────────────────────────────────────
+  # Geen directe host-poort — externe toegang loopt via notification-nginx (TLS 1.3).
+  # Intern bereikbaar op notification-svc:8080 (frontend-proxy en outbox relay).
   notification-svc:
     build:
       context: ./notification-service
@@ -199,8 +201,7 @@ services:
       # Loki logging
       LOKI_URL: http://loki:3100/loki/api/v1/push
     networks: [notification-net, broker-net, openmrs-net, observability-net]
-    ports:
-      - "${NOTIFICATION_PORT:-8081}:8080"
+    # Geen host-poort — gebruik https://localhost:4000 via notification-nginx
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
       interval: 15s
@@ -211,6 +212,28 @@ services:
       driver: json-file
       options:
         tag: "notification-svc"
+
+  # ── NFR-5b: TLS 1.3 reverse proxy ──────────────────────────────────────────
+  # Alle externe toegang tot notification-svc loopt via HTTPS (TLS 1.3 only).
+  # Self-signed cert (dev) — productie: mount Let's Encrypt cert als volume.
+  notification-nginx:
+    build:
+      context: ./infra/nginx
+      dockerfile: Dockerfile
+    container_name: notification-nginx
+    restart: unless-stopped
+    depends_on:
+      notification-svc:
+        condition: service_healthy
+    networks: [notification-net]
+    ports:
+      - "${NOTIFICATION_PORT:-4000}:443"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://localhost/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── FakeComWorld (mock messaging providers) ─────────────────────────────────
   # Exposes 4 providers: SwiftSend, SecurePost, LegacyLink, AsyncFlow
@@ -313,13 +336,15 @@ services:
       retries: 5
 
   # ── Tenant Registratie Frontend ──────────────────────────────────────────────
+  # NFR-5b: serveert ook over HTTPS (TLS 1.3) zodat API-keys niet onversleuteld
+  # over het netwerk reizen bij het invullen van het registratieformulier.
   notification-frontend:
     build:
       context: ./frontend
     container_name: notification-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3001}:80"
+      - "${FRONTEND_PORT:-3001}:443"
     networks: [notification-net]
     depends_on:
       notification-svc:

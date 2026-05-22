@@ -1,145 +1,266 @@
 # CLAUDE.md — BeunMRS / OpenMRS Communicatiemodule
 
-Projectcontext voor Claude Code. Dit bestand beschrijft wat er staat, wat er nog moet, en welke keuzes al gemaakt zijn. Lees dit aan het begin van elke sessie.
+Projectcontext voor Claude Code. Lees dit aan het begin van elke sessie.
 
 ---
 
-## Wat is dit project?
+## 📌 Wat is dit project?
 
-Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënten automatisch herinnert aan hun afspraken via externe messaging providers. Elke tenant (ziekenhuis) heeft een eigen OpenMRS-instantie, eigen API-sleutels en eigen messaging provider. De module integreert met OpenMRS via de **REST v1 API** (FHIR2 Appointment niet ondersteund in deze installatie) en verstuurt berichten via vier mock-providers (FakeComWorld).
+Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënten automatisch herinnert aan hun afspraken via externe messaging providers (SMS). Elke tenant (ziekenhuisorganisatie) heeft een eigen OpenMRS-instantie, eigen API-sleutels en één gekozen messaging provider.
 
 **Stack:** Java 21 · Spring Boot 3.2 · PostgreSQL · RabbitMQ · Docker Compose · Grafana/Loki · React (Vite)
 
 ---
 
-## Projectstructuur
+## 🎯 COMPLIANCE MATRIX — Eisen uit opdracht vs Status
+
+> **Dit is de leidende lijst.** Elke regel uit `docs/OpdrachtOpenMRS.md` is hier gemapped. Werk dit bij na elke wijziging.
+
+### Functionele eisen (FR)
+
+| ID | Eis | Implementatie | Status |
+|----|-----|---------------|--------|
+| **FR-1a** | Notificatie 24u vóór afspraak | `ReminderScheduler` + `ReminderDispatchJob` | ✅ |
+| **FR-1b** | Notificatie 1u vóór afspraak | `ReminderScheduler` + `ReminderDispatchJob` | ✅ |
+| **FR-1c** | Bevat datum + tijd | `MessageHelper.formatTime()` met tenant-timezone | ✅ |
+| **FR-1d** | Bevat locatie (polikliniek/kamer) | `MessageHelper.locationSuffix()` — `locationName` uit OpenMRS | ✅ |
+| **FR-1e** | Bevat instructies (nuchter etc.) | `MessageHelper.commentsSuffix()` — `comments` uit OpenMRS | ✅ |
+| **FR-1f** | Skip als afspraak al gestart | `ReminderDispatchJob.processReminder()` → `status='skipped'` | ✅ |
+| **FR-1g** | Bij annulering: stop reminders | `AppointmentEventConsumer` CANCELLED → `cancelReminders()` | ✅ |
+| **FR-1h** | Bij wijziging: pas reminders aan | `AppointmentEventConsumer` UPDATED → cancel + reschedule | ✅ |
+| **FR-2** | Logging voor factuurcontrole | `notification_log` + `notification_audit_log` (1jr) | ✅ |
+| **FR-3** | Eén provider per organisatie | `NotificationDispatcher` filtert op `tenant.providerName` | ✅ |
+
+### Niet-functionele eisen (NFR)
+
+| ID | Eis | Implementatie | Status |
+|----|-----|---------------|--------|
+| **NFR-1** | Multi-tenant SaaS | `tenants` tabel + `TenantContext` ThreadLocal + scoped queries | ✅ |
+| **NFR-2a** | Integratie passend bij doel | REST v1 polling (ADR-003) | ✅ |
+| **NFR-2b** | Gedocumenteerd voor beheerders | `docs/README-beheerder.md` | ❌ **TODO** |
+| **NFR-2c** | Beveiligd volgens best practices | API key auth + AES-256 + masking | ✅ |
+| **NFR-3** | 4 providers (SwiftSend, LegacyLink, AsyncFlow, SecurePost) | Alle 4 geïmplementeerd | ✅ |
+| **NFR-4** | OpenMRS 2.7.x compatibiliteit | Gebruikt REST v1 API (stabiel sinds 2.x) | ⚠️ **TE VERIFIËREN** |
+| **NFR-5a** | AES-256 voor opslag | `AesEncryptionService` (GCM mode) | ✅ |
+| **NFR-5b** | **TLS 1.3 voor transport** | `notification-nginx` container (NGINX + TLS 1.3 only, self-signed cert) | ✅ |
+| **NFR-5c** | Credentials niet in code/config | `.env` + `AesEncryptionService` | ✅ |
+| **NFR-5d** | Logs niet onbeveiligd | PII gemaskeerd, Loki intern netwerk | ⚠️ **Loki TLS doc** |
+| **NFR-6a** | HL7 berichtontvangst + validatie | JSON schema via Jackson, RabbitMQ converter | ⚠️ **Aantonen** |
+| **NFR-6b** | ACK voor ontvangstbevestiging | RabbitMQ ack + `notification_log.status` | ⚠️ **Doc nodig** |
+| **NFR-6c** | Logging en tracking | `notification_log` met provider, status, retry_count | ✅ |
+| **NFR-6d** | Berichttransformatie | Provider adapters mappen event → provider-formaat | ✅ |
+| **NFR-6e** | Queueing en retry | RabbitMQ + outbox + `FailedNotificationRetryJob` | ✅ |
+| **NFR-7** | Zelfstandig + fallback | Outbox + circuit breaker + retry | ✅ |
+| **NFR-8** | Karaktersets (UTF-8) | DB UTF-8 + Spring UTF-8 + JSON UTF-8 | ⚠️ **Aantonen met testbericht** |
+| **NFR-9a** | Monitoring + dashboard | Grafana + Loki + Prometheus | ⚠️ **Dashboard config nodig** |
+| **NFR-9b** | OpenTelemetry | Niet geïmplementeerd — alleen Micrometer/Prometheus | ❌ **TODO of motiveren** |
+| **NFR-10** | 14-dagen verwijdering | `DataRetentionJob` cron 02:00 daily | ✅ |
+| **NFR-11** | 1-jaar meta-info retentie | `notification_audit_log` (PII-vrij) + `purgeOldAuditLog()` | ✅ |
+| **NFR-12** | Uitbreidbaar naar andere modules | Event-driven via RabbitMQ — andere routing keys mogelijk | ⚠️ **Aantonen in doc** |
+| **NFR-13** | Tijdzones | `tenants.timezone` + `MessageHelper.formatTime(zone)` | ✅ |
+
+### Doelstelling-specifiek
+
+| Onderwerp | Status | Toelichting |
+|-----------|--------|-------------|
+| **FHIR-specificatie** | ⚠️ | Opdracht zegt FHIR; we gebruiken REST v1 omdat FHIR2-module geen Appointment ondersteunt (`HAPI-0302`). Uitgelegd in ADR-003. |
+| **Uitbreidbaarheid (nieuwe provider)** | ✅ | `NotificationProvider` interface — nieuwe klasse implementeren, klaar. Aan te tonen via demo. |
+
+### Deliverables
+
+| ID | Deliverable | Status |
+|----|-------------|--------|
+| **D1** | Technische documentatie (`docs/README-beheerder.md`) | ❌ TODO |
+| **D2** | Codebase + opstartinstructies (root `README.md`) | ⚠️ Basic — uitbreiden |
+| **D3a** | ADR-logboek | ✅ ADR-001 t/m ADR-004 |
+| **D3b** | C4 diagrammen (L1/L2/L3) + procesvisualisatie | ✅ Aanwezig |
+| **D4a** | Realisatielogboek: ontwikkeltools | ❌ TODO |
+| **D4b** | Realisatielogboek: AI-tools + voorbeelden | ❌ TODO |
+| **D4c** | Realisatielogboek: commits per teamlid | ❌ TODO |
+| **D5** | Testrapportage | ❌ TODO (tests ✅, rapport ❌) |
+
+---
+
+## 🔴 KRITIEKE OPENSTAANDE PUNTEN
+
+> Aanpakken in deze volgorde. Geen item overslaan zonder expliciete motivatie.
+
+### Code/configuratie (TIER 1)
+
+- [ ] **NFR-4 — OpenMRS 2.7.x verificatie**
+  Test of de poller werkt tegen OpenMRS 2.7.x specifiek (huidige Docker draait reference-app 3.x). Documenteer welke endpoints we gebruiken en sinds welke OpenMRS-versie die bestaan.
+
+- [ ] **NFR-9b — OpenTelemetry of motivatie**
+  Opdracht noemt OpenTelemetry expliciet. Kies: implementeren (Micrometer Tracing + OTLP exporter) of motiveren in ADR waarom Loki + Prometheus voldoende is.
+
+### Documentatie (TIER 2 — verplichte deliverables)
+
+- [x] ~~**NFR-5b — TLS 1.3 HTTPS**~~ ✅ Geïmplementeerd: `infra/nginx/` (NGINX + `ssl_protocols TLSv1.3`) — extern bereikbaar via `https://localhost:4000`
+
+- [ ] **D1 — `docs/README-beheerder.md`** (Deliverable 1)
+  - Koppeling met OpenMRS (REST v1, poller-interval, credentials)
+  - Stap-voor-stap tenant registreren + eerste afspraak testen
+  - **NFR-5b — TLS 1.3 productie-setup**: self-signed vervangen door Let's Encrypt cert (volume mount in docker-compose)
+  - **NFR-5d — Loki TLS-config** voor productie
+  - **NFR-6b — HL7 ACK-equivalent** uitleg (RabbitMQ ack + status-trail)
+  - **NFR-8 — UTF-8 end-to-end** + testbericht met niet-Latijnse karakters
+  - **NFR-9a — Grafana dashboard URLs** + alerts setup
+  - **NFR-12 — Uitbreidbaarheid** uitleggen (nieuwe RabbitMQ routing keys)
+  - **NFR-2c — Beveiliging best practices** samenvatting
+
+- [ ] **D2 — Root `README.md`** uitbreiden (Deliverable 2)
+  - Vereisten (Docker, poorten)
+  - `docker compose up -d` workflow
+  - Voorbeeld-request (registratie + afspraak)
+  - Productie-env vars (`DB_ENCRYPTION_KEY`, `SAAS_ADMIN_KEY`, TLS)
+
+- [ ] **D4 — Realisatielogboek** (Deliverable 4)
+  - **D4a** Ontwikkeltools (IDE's gebruikt)
+  - **D4b** AI-tools + representatieve voorbeelden (prompts, screenshots)
+  - **D4c** Commits per teamlid (Git log filter per author)
+
+- [ ] **D5 — Testrapport** (Deliverable 5)
+  - 87 unit tests overzicht
+  - Scenario's, resultaten, dekking
+  - Uitbreidbaarheid aangetoond via demo "nieuwe provider toevoegen"
+
+### Aantoonbaarheid (TIER 3 — bewijs in documentatie)
+
+- [ ] **NFR-6a** HL7 berichtvalidatie expliciet aantonen (Jackson strict mode of equivalent)
+- [ ] **NFR-8** UTF-8 testbericht (Arabisch/Chinees) door hele stack
+- [ ] **NFR-9a** Grafana dashboard met: messages/min, errors, retry counts, per-provider latency
+
+### End-to-end verificatie (TIER 4 — laatste stap)
+
+> ⚠️ De URLs hieronder zijn **lokale development-URLs** (http is ok voor localhost). In productie: alles via HTTPS/TLS 1.3. Zie NFR-5b hierboven.
+
+- [ ] Schone start: `docker compose down -v && docker compose up -d`
+- [ ] Tenant registreren via https://localhost:3001
+- [ ] Afspraak aanmaken → reminders in `scheduled_notifications`
+- [ ] Afspraak annuleren → reminders krijgen `status='cancelled'`
+- [ ] Twee tenants (SwiftSend + SecurePost) — juiste provider per tenant in logs
+- [ ] Tenant-isolatie: tenant A API key → alleen tenant A data zichtbaar
+
+---
+
+## 🏗️ Architectuur — quick reference
+
+### Integratiemethode (ADR-003)
+
+REST v1 `POST /ws/rest/v1/appointment/search` polling — elke 2 min, 30-daags window, per tenant.
+- AtomFeed afgevallen (vereist Bahmni)
+- Webhook afgevallen (events verloren bij downtime)
+- FHIR2 afgevallen (`HAPI-0302: Unknown resource type 'Appointment'`)
+
+### Multi-tenant
+
+| Per tenant | Implementatie |
+|------------|---------------|
+| Eigen OpenMRS-host | `tenants.openmrs_host` |
+| Eigen credentials | AES-256-GCM encrypted in DB |
+| Eén messaging provider | `tenants.provider_name` (CHECK constraint) |
+| Eigen API-key | `X-API-Key` header, SHA-256 hash lookup |
+| Eigen tijdzone | `tenants.timezone` (IANA, default Europe/Amsterdam) |
+
+`TenantContext` (ThreadLocal) draagt tenant door request/job lifecycle.
+
+### Provider pattern
+
+`NotificationProvider` interface — `send(event, credentials)`. Per tenant **één** provider via `tenant.providerName`. Nieuwe provider = nieuwe klasse, nul andere wijzigingen.
+
+**Alle providers gebruiken phone (SMS) — email is verwijderd uit het systeem** (teacher confirmed: telefoonnummer is voldoende).
+
+### Veerkrachtmechanismen
+
+| Mechanisme | Implementatie |
+|------------|---------------|
+| Circuit breaker | 5 fouten → 2 min pauze, per tenant-slug, in-memory |
+| Persist-before-publish | `outbox_events` tabel vóór RabbitMQ |
+| Outbox relay | `OutboxRelayJob` elke 30s, max 5 pogingen → `failed_at` |
+| Duplicate guard | `seen_appointments` scoped op `(appointment_uuid, tenant_id)` |
+| Reminder scheduling | `scheduled_notifications` met JSONB payload, dispatch elke 60s |
+| Provider retry | `FailedNotificationRetryJob` — 3 pogingen, backoff 5→15 min, dan `permanently_failed` |
+| Data retentie | `DataRetentionJob` — daily 02:00, 14 dagen PII / 1 jaar audit |
+
+### Database (8 tabellen)
+
+| Tabel | Doel |
+|-------|------|
+| `tenants` | SaaS-registry: credentials, provider, timezone, API-sleutel |
+| `outbox_events` | At-least-once delivery relay |
+| `sync_watermarks` | Poller cursor per tenant |
+| `seen_appointments` | Duplicate guard per tenant |
+| `notification_log` | Audit trail (14 dagen, PII gemaskeerd) |
+| `scheduled_notifications` | 24h + 1h reminders met JSONB payload |
+| `async_flow_commands` | Pending AsyncFlow async commands |
+| `notification_audit_log` | PII-vrij logboek (1 jaar — NFR-11) |
+
+### RabbitMQ topology
+
+- Exchange: `openmrs.events` (topic, durable)
+- Queues: `appointments`, `appointment.cancelled` (beide met DLX)
+- DLX: `openmrs.events.dlx`
+- Routing keys: `appointment.scheduled`, `appointment.updated`, `appointment.cancelled`
+
+---
+
+## 📂 Projectstructuur
 
 ```
 BeunMRS/
-├── docker-compose.yml                  # Volledige stack (13 containers)
+├── docker-compose.yml                  # Volledige stack
 ├── .env                                # Lokale secrets (nooit committen)
 ├── frontend/                           # React registratiescherm (Vite + Nginx)
-│   ├── src/components/RegisterForm.jsx # Self-service tenant onboarding UI
-│   └── nginx.conf                      # Proxy /api/* → notification-svc:8080
-├── notification-service/               # De Spring Boot service
+│   ├── src/components/RegisterForm.jsx
+│   └── nginx.conf
+├── notification-service/               # Spring Boot service
 │   ├── src/main/java/com/openmrs/notification/
-│   │   ├── adapter/                    # Provider adapters (SwiftSend, SecurePost, LegacyLink, AsyncFlow, Mock)
-│   │   ├── config/                     # AppConfig (RabbitMQ converter), RestTemplateFactory
-│   │   ├── consumer/                   # RabbitMQ listeners (AppointmentEventConsumer)
+│   │   ├── adapter/                    # SwiftSend, SecurePost, LegacyLink, AsyncFlow, Mock
+│   │   ├── config/                     # AppConfig, RestTemplateFactory, GlobalExceptionHandler
+│   │   ├── consumer/                   # AppointmentEventConsumer
 │   │   ├── model/                      # AppointmentEvent, NotificationResult, ProviderCredentials
 │   │   ├── outbox/                     # OutboxService, OutboxRelayJob
-│   │   ├── poller/                     # OpenMrsAppointmentPoller (REST v1, per-tenant)
-│   │   ├── reconciler/                 # AppointmentReconciler (backup poller)
-│   │   ├── scheduler/                  # ReminderScheduler, ReminderDispatchJob
-│   │   ├── security/                   # AesEncryptionService (AES-256-GCM)
+│   │   ├── poller/                     # OpenMrsAppointmentPoller
+│   │   ├── reconciler/                 # AppointmentReconciler
+│   │   ├── scheduler/                  # ReminderScheduler, ReminderDispatchJob,
+│   │   │                               # FailedNotificationRetryJob, DataRetentionJob
+│   │   ├── security/                   # AesEncryptionService
 │   │   ├── service/                    # NotificationDispatcher, PersonContactService
-│   │   ├── tenant/                     # Tenant, TenantService, TenantContext, TenantApiKeyFilter,
-│   │   │                               # TenantRegistrationController, TenantAdminController
-│   │   └── util/                       # MessageHelper (formatTime, mask, commentsSuffix, locationSuffix)
-│   ├── src/main/resources/
-│   │   ├── application.yml
-│   │   └── logback-spring.xml
-│   └── src/test/                       # LEEG — tests nog te schrijven (Fase 6)
+│   │   ├── tenant/                     # Tenant, TenantService, TenantContext,
+│   │   │                               # TenantApiKeyFilter, TenantRegistration/AdminController
+│   │   └── util/                       # MessageHelper
+│   └── src/test/                       # 87 unit tests (Mockito subclass mocker)
 ├── infra/
-│   ├── postgres/init/00_schema.sql     # DB-schema (8 tabellen + pgcrypto)
+│   ├── postgres/init/00_schema.sql
 │   ├── rabbitmq/definitions/topology.json
 │   ├── loki/loki-config.yml
 │   ├── promtail/promtail-config.yml
 │   └── grafana/provisioning/
 └── docs/
-    ├── OpdrachtOpenMRS.md
-    ├── ADR-003-integratiemethode-NL.md
+    ├── OpdrachtOpenMRS.md              # Bron der waarheid
+    ├── ADR-001..004                    # ADRs
+    ├── SECURITY-AUDIT.md
     └── openmrs-appointment-flow-v2.md
 ```
 
 ---
 
-## Architectuurkeuzes (vastgesteld)
+## 🚪 Ports
 
-### Integratiemethode — ADR-003 ✅
-
-**Gekozen: REST v1 appointment/search + RabbitMQ (event-driven polling)**
-
-- **Primaire poller** (`OpenMrsAppointmentPoller`): elke 2 min via `POST /ws/rest/v1/appointment/search`, 30-daags sliding window, itereert over alle actieve tenants
-- **Backup reconciliator** (`AppointmentReconciler`): elke 5 min — let op: heeft een bekende 500-bug (zie Bekende valkuilen)
-- AtomFeed afgevallen: vereist volledige Bahmni-distributie
-- Webhook afgevallen: events gaan verloren bij downtime
-- **FHIR2 Appointment afgevallen**: `GET /ws/fhir2/R4/Appointment` → `HAPI-0302: Unknown resource type 'Appointment'`
-
-### Multi-tenant architectuur ✅
-
-Elke tenant (ziekenhuis) heeft:
-- Eigen OpenMRS-instantie (`openmrs_host` per tenant in DB)
-- Eigen credentials (AES-256-GCM encrypted in DB)
-- Één vaste messaging provider (SwiftSend, SecurePost, LegacyLink of AsyncFlow)
-- Eigen API-key voor de SaaS-laag (`X-API-Key` header)
-
-Poller itereert over alle actieve tenants en bouwt per tenant een `RestTemplate` via `RestTemplateFactory`. `TenantContext` (ThreadLocal) draagt de tenant door de hele request/job-lifecycle.
-
-### Provider pattern ✅
-
-`NotificationProvider` interface met `send(event, credentials)`. Per tenant wordt **één** provider gekozen op basis van `tenant.providerName`. `ProviderCredentials` bevat de runtime-gedecrypteerde sleutels — geen hardcoded config meer. Nieuwe provider = nieuwe klasse, nul andere wijzigingen.
-
-### Veerkrachtmechanismen ✅
-
-| Mechanisme             | Implementatie                                                                 |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| Circuit breaker        | Na 5 fouten → 2 min pauze, per tenant-slug, in-memory                        |
-| Persist-before-publish | `outbox_events` tabel vóór RabbitMQ-publicatie                                |
-| Outbox relay           | `OutboxRelayJob` herprobeert elke 30s, max 5 pogingen, dan `failed_at`        |
-| Duplicate guard        | `seen_appointments` tabel, scoped op `(appointment_uuid, tenant_id)`          |
-| Reminder scheduling    | `scheduled_notifications` tabel, `ReminderDispatchJob` pollt elke 60s        |
-| Provider retry ✅       | `FailedNotificationRetryJob` — elke 60s, max 3 pogingen, exponential backoff: 5 → 15 → 45 min, dan `permanently_failed` |
-
-### Database ✅ (8 tabellen)
-
-| Tabel                   | Doel                                                    |
-| ----------------------- | ------------------------------------------------------- |
-| `tenants`                  | SaaS-registry: credentials, provider-keuze, timezone, API-sleutel |
-| `outbox_events`            | At-least-once delivery relay                                        |
-| `sync_watermarks`          | Poller/reconciliator cursor per tenant                              |
-| `seen_appointments`        | Duplicate guard poller                                              |
-| `notification_log`         | Audit trail alle verzendpogingen (PII gemaskeerd)                   |
-| `scheduled_notifications`  | Geplande 24h + 1h reminders met JSONB payload                       |
-| `async_flow_commands`      | Pending AsyncFlow commands (async protocol)                         |
-| `notification_audit_log`   | PII-vrij logboek voor factuurcontrole (1 jaar retentie, NFR-11)     |
-
-### RabbitMQ topology ✅
-
-- Exchange: `openmrs.events` (topic, durable)
-- Queues: `appointments`, `appointment.cancelled` (beide met DLX)
-- DLX: `openmrs.events.dlx` → dead queues voor inspectie
-- Routing keys: `appointment.scheduled`, `appointment.updated`, `appointment.cancelled`
+| Service | Host | Container |
+|---------|------|-----------|
+| OpenMRS gateway | 80 | 80 |
+| RabbitMQ management | 15672 | 15672 |
+| Grafana | 3000 | 3000 |
+| Loki | 3100 | 3100 |
+| notification-nginx (TLS 1.3) | 4000 | 443 |
+| notification-svc (intern) | — | 8080 |
+| FakeComWorld | 1337 | 8080 |
+| notification-frontend (TLS 1.3) | 3001 | 443 |
 
 ---
 
-## Ports overzicht
-
-| Service                    | Host port | Container port |
-| -------------------------- | --------- | -------------- |
-| OpenMRS gateway            | 80        | 80             |
-| RabbitMQ management        | 15672     | 15672          |
-| Grafana                    | 3000      | 3000           |
-| Loki                       | 3100      | 3100           |
-| notification-svc           | 4000      | 8080           |
-| FakeComWorld               | 1337      | 8080           |
-| notification-frontend (React) | 3001   | 80             |
-
----
-
-## Bekende valkuilen
-
-- **`comments` via search API altijd null** — `POST /ws/rest/v1/appointment/search` retourneert altijd `"comments": null`. Opgelost: `enrichComments()` doet een extra `GET /ws/rest/v1/appointment?uuid={uuid}` voor nieuwe/gewijzigde afspraken. Dit werkt correct — comments worden meegegeven in alle berichten en reminder-payloads.
-- **AppointmentReconciler 500-bug** — ✅ Opgelost. Was: `GET ?lastUpdated=...` → 500. Nu: `POST /ws/rest/v1/appointment/search` (zelfde als primaire poller).
-- **FHIR2 Appointment niet ondersteund** — `GET /ws/fhir2/R4/Appointment` → `HAPI-0302`. De FHIR2 module heeft geen Appointment-mapping. Poller gebruikt REST v1.
-- **OpenMRS start traag** — eerste opstart 5-10 minuten (Liquibase + module loading). Wacht op `Server startup in [XXXX] milliseconds`.
-- **Schone herstart na schema-wijziging** — bij wijzigingen aan `00_schema.sql` altijd `docker compose down -v && docker compose up -d` uitvoeren. Volumes worden niet automatisch bijgewerkt.
-- **AES-256 dev-sleutel** — `AesEncryptionService` gebruikt een hardcoded fallback dev-sleutel als `DB_ENCRYPTION_KEY` niet gezet is. Nooit in productie zonder deze env var.
-- **`saas.admin-key` default** — `TenantAdminController` heeft default `admin-secret` als `SAAS_ADMIN_KEY` niet gezet is in `.env`. In productie altijd overschrijven.
-
----
-
-## Hoe starten
+## 🚀 Hoe starten
 
 ```powershell
 # Eerste keer (of na schema-wijziging)
@@ -147,28 +268,22 @@ docker compose down -v
 docker compose up -d
 
 # Rebuild notification-svc na code wijziging
-docker compose build notification-svc
-docker compose up -d notification-svc
+docker compose build notification-svc && docker compose up -d notification-svc
 
 # Rebuild frontend na UI wijziging
-docker compose build notification-frontend
-docker compose up -d notification-frontend
+docker compose build notification-frontend && docker compose up -d notification-frontend
 
-# Logs bekijken
+# Logs
 docker compose logs -f notification-svc
-docker compose logs -f openmrs-backend
-
-# Alles opnieuw
-docker compose down -v && docker compose up -d
 ```
 
 **URLs:**
 - OpenMRS: http://localhost/openmrs (admin / Admin1234)
-- Tenant registratie UI: **http://localhost:3001**
+- Tenant registratie UI: **https://localhost:3001** (self-signed cert → browser-waarschuwing accepteren)
 - RabbitMQ UI: http://localhost:15672 (rabbit / rabbit_secret)
 - Grafana: http://localhost:3000 (admin / grafana_secret)
 - FakeComWorld: http://localhost:1337
-- Notification service health: http://localhost:4000/actuator/health
+- Notification health: https://localhost:4000/actuator/health (self-signed cert → browser-waarschuwing accepteren)
 
 **Tenant registreren (Postman of curl):**
 ```
@@ -186,7 +301,7 @@ Content-Type: application/json
 }
 ```
 
-**Afspraak aanmaken (Postman):**
+**Afspraak aanmaken:**
 ```
 POST http://localhost/openmrs/ws/rest/v1/appointment
 Authorization: Basic admin:Admin1234
@@ -205,232 +320,30 @@ Content-Type: application/json
 
 ---
 
-## Voortgang — fasen & stappen
+## ⚠️ Bekende valkuilen
+
+- **`comments` via search API altijd null** — `POST /ws/rest/v1/appointment/search` retourneert `"comments": null`. `enrichComments()` doet een extra `GET /ws/rest/v1/appointment?uuid={uuid}`.
+- **FHIR2 Appointment niet ondersteund** — `GET /ws/fhir2/R4/Appointment` → `HAPI-0302`. Daarom REST v1.
+- **OpenMRS start traag** — 5-10 minuten (Liquibase + module loading). Wacht op `Server startup`.
+- **Schema-wijziging vereist clean restart** — `docker compose down -v && docker compose up -d`. Volumes worden niet auto-bijgewerkt.
+- **AES-256 dev-sleutel** — `AesEncryptionService` heeft een hardcoded fallback. Productie: zet `DB_ENCRYPTION_KEY`.
+- **`saas.admin-key` default** — Productie: zet `SAAS_ADMIN_KEY`.
+- **Java 24 + Mockito** — Subclass mock maker config in `src/test/resources/mockito-extensions/`. Niet wijzigen.
+- **Email is verwijderd** — Alle providers gebruiken alleen phone (SMS). `patientEmail` veld bestaat nog in `AppointmentEvent` maar wordt nooit gepopuleerd.
 
 ---
 
-### 🎯 Prioriteiten — Nog te doen (in volgorde van aanpak)
+## 📜 Veranderingen geschiedenis (samengevat)
 
-> Werk dit van boven naar beneden af. Tier 1 eerst — zonder deze stappen mist het systeem verplichte NFRs.
+Voor volledige history zie git log. Hier alleen de architectuurmijlpalen:
 
-#### 🔴 TIER 1 — Kritieke code (eerst aanpakken)
-
-- [x] **8m** — Provider-level retry bij 429/503 ✅ **(NFR-6 + NFR-7)**
-  - `FailedNotificationRetryJob` in `scheduler/` — `@Scheduled(fixedDelay=60s)`
-  - Exponential backoff: poging 1 → +5 min, poging 2 → +15 min, poging 3 → `permanently_failed`
-  - `notification_log`: `retry_count INT DEFAULT 0` + `next_retry_at TIMESTAMPTZ` + partial index
-  - `OutboxService.buildPayloadJson()` gebruikt nu ObjectMapper + slaat non-PII velden op voor retry-reconstructie
-  - Phone/email worden bij retry opnieuw opgehaald via `PersonContactService` (waren gemaskeerd — NFR-5)
-- [x] **8j** — AppointmentReconciler 500-bug gefixed ✅
-  - Was: `GET ?lastUpdated=...` → HTTP 500 (endpoint vereist `?uuid`)
-  - Nu: `POST /ws/rest/v1/appointment/search` met window `watermark → now+30 dagen` (zelfde als primaire poller)
-
-#### 🟠 TIER 2 — Verplichte deliverables (opdracht)
-
-- [ ] **7h** — `docs/README-beheerder.md` schrijven **(Deliverable 1 — technische documentatie)**
-  - Koppeling met OpenMRS (REST v1, poller-interval, credentials)
-  - Stap-voor-stap tenant registreren + eerste afspraak testen
-  - Beveiliging: API key rotatie, AES-256, TLS 1.3 productie-setup (NGINX + Let's Encrypt)
-  - Monitoring: Grafana URLs, dashboards, alerts
-  - Charactersets (UTF-8), HL7 ACK-equivalent uitleg
-- [ ] **7i** — Root `README.md` bijwerken **(Deliverable 2 — opstartinstructies)**
-  - Vereisten (Docker, poorten), `docker compose up -d`, voorbeeld-request, productie-env vars
-- ~~**ADR-005/006/007**~~ — ✅ **Niet nodig als aparte bestanden** — ADR-001 t/m ADR-004 dekken alle architectuurkeuzes af. De logica van multi-tenant, provider routing en encryptie staat gedocumenteerd in de bestaande ADRs en CLAUDE.md zelf.
-- ~~**7m–7p**~~ — ✅ **C4-diagrammen bestaan al** — L1, L2, L3 en procesvisualisatie zijn aanwezig.
-- [ ] **7q** — Realisatielogboek: gebruikte ontwikkeltools **(Deliverable 4)**
-- [ ] **7r** — Realisatielogboek: AI-tools + representatieve voorbeelden **(Deliverable 4)**
-- [ ] **7s** — Realisatielogboek: commits per teamlid **(Deliverable 4)**
-
-#### 🟡 TIER 3 — Tests + compliance-documentatie
-
-- [x] **6a–6j** — Unit tests schrijven ✅ **(Deliverable 5 — testrapportage)**
-  - ✅ 87 tests geschreven en passing (SwiftSend, SecurePost, LegacyLink, AsyncFlow, Dispatcher, Consumer, Scheduler, Outbox, Controller, Encryption)
-  - Mockito subclass mock maker configured voor Java 24 compatibility
-- [ ] **8i** — TLS 1.3 / HTTPS documentatie (NFR-5) — in `README-beheerder.md` verwerken
-- [ ] **8k** — Karaktersets aantonen (NFR-8) — UTF-8 end-to-end bewijzen + testbericht niet-Latijnse tekens
-- [ ] **8l** — HL7 ACK-mechanisme documenteren (NFR-6) — uitleggen als HL7-ACK-equivalent
-- [ ] **7t** — Testrapport schrijven (scenario's, resultaten, dekking)
-- [ ] **7u** — Uitbreidbaarheid aantonen (nieuwe provider = alleen nieuwe klasse)
-
-#### 🟢 TIER 4 — End-to-end verificatie (laatste stap)
-
-- [ ] **7a** — `docker compose down -v && docker compose up -d` — schone start met nieuw schema
-- [ ] **7b** — Tenant registreren via http://localhost:3001 of Postman
-- [ ] **7c** — Afspraak aanmaken → logs → `scheduled_notifications` controleren
-- [ ] **7d** — Afspraak annuleren → reminders krijgen `status = 'cancelled'`
-- [ ] **7e** — Twee tenants registreren (SwiftSend + SecurePost)
-- [ ] **7f** — Per tenant afspraak → correcte provider in logs + `tenant_id` in `notification_log`
-- [ ] **7g** — Tenant A API key → alleen tenant A data zichtbaar
-
----
-
-### ✅ Afgerond — Fase 1 — Snelle bugfixes
-
-- [x] **1a.** `MockMessagingProvider` uitschakelen — `mock.messaging.enabled: false`
-- [x] **1b.** Duplicate import verwijderd uit `SwiftSendProvider.java`
-- [x] **1c.** `AppointmentReconciler.mapToEvent()` — leest werkelijke `status`, vult `patientName`, `appointmentTime`, `locationName`
-- [x] **1d.** Poller omgeschreven van FHIR2 naar `POST /ws/rest/v1/appointment/search`
-
----
-
-### ✅ Afgerond — Fase 2 — Patiënt contactgegevens ophalen
-
-**Attribuutnamen geverifieerd via `GET /ws/rest/v1/personattributetype`:**
-- Telefoon → `"Telephone Number"`
-- Email → `"email"` (lowercase)
-
-- [x] **2a.** `PersonContactService.java` — `GET /ws/rest/v1/person/{uuid}?v=full`, leest `attributes[]`, in-memory cache (max 500 entries)
-- [x] **2b.** Poller `toEvent()` → `personContactService.enrichEvent(event)`
-- [x] **2c.** Reconciler `mapToEvent()` → `personContactService.enrichEvent(event)`
-- [x] **2d.** `OutboxService.buildPayloadJson()` bijgewerkt met `patientPhone` en `patientEmail`
-- [x] **2e.** Geverifieerd: Betty Williams — `notification_log` bevat phone + email voor alle providers
-
----
-
-### ✅ Afgerond — Fase 3 — Outbox relay loop
-
-- [x] **3a.** `OutboxRelayJob.java` — `@Scheduled(fixedDelay = 30_000)`, batch 20, per tenant
-- [x] **3b.** Query scoped op `tenant_id`, `published_at IS NULL AND failed_at IS NULL`
-- [x] **3c.** Per rij: TenantContext zetten, `rabbitTemplate.convertAndSend()`, `published_at = now()`
-- [x] **3d.** Fout-afhandeling: `retry_count` ophogen, na 5 pogingen `failed_at` zetten
-- [x] **3e.** Geverifieerd: relay werkt correct
-
----
-
-### ✅ Afgerond — Fase 4 — Reminder scheduling 24h + 1u
-
-- [x] **4a.** `scheduled_notifications` tabel — JSONB payload zodat dispatch job geen extra OpenMRS-call nodig heeft
-- [x] **4b.** `ReminderScheduler.java` — `scheduleReminders()` (2 rijen), `cancelReminders()` (per tenant_id)
-- [x] **4c.** `ReminderDispatchJob.java` — elke 60s, TenantContext per rij, skip als afspraak al voorbij (`status = 'skipped'`)
-- [x] **4d.** `AppointmentEventConsumer.java` — SCHEDULED: dispatch + schedule; UPDATED: cancel + reschedule; CANCELLED: cancel
-- [x] **4e.** `REMINDER_24H` / `REMINDER_1H` EventTypes — alle providers bijgewerkt met reminder berichttekst
-- [x] **4f.** Geverifieerd: reminders aangemaakt, verstuurd, `status = 'sent'` in DB
-
----
-
-### ✅ Afgerond — Fase 5 — Per-tenant RestTemplate + provider isolatie
-
-- [x] **5a.** `RestTemplateFactory.java` — bouwt per poll-cyclus een `RestTemplate` met de credentials van die tenant
-- [x] **5b.** `AppConfig.java` — `openmrsRestTemplate` singleton verwijderd; `jsonMessageConverter(ObjectMapper)` gebruikt Spring-managed ObjectMapper voor consistente serialisatie
-- [x] **5c.** `@Qualifier("providerRestTemplate")` op alle providers — OpenMRS-credentials lekken nooit naar FakeComWorld
-- [x] **5d.** Geverifieerd: service start correct, providers werken
-
----
-
-### 🟡 TIER 3 — Fase 6 — Tests schrijven _(4-8 uur)_ — zie prioriteiten hierboven
-
-- [ ] **6a.** `NotificationDispatcherTest` — mock providers, verifieer routing naar één provider per tenant
-- [ ] **6b.** `SwiftSendProviderTest` — mock RestTemplate, verifieer `X-API-KEY` header en berichtinhoud
-- [ ] **6c.** `SecurePostProviderTest` — token caching per clientId, retry op 401
-- [ ] **6d.** `LegacyLinkProviderTest` — SOAP envelope bevat correcte velden en XML-escaping
-- [ ] **6e.** `AsyncFlowProviderTest` — command submit + status polling cyclus
-- [ ] **6f.** `AppointmentEventConsumerTest` — consumer zet TenantContext, roept dispatcher + reminderScheduler aan
-- [ ] **6g.** `OutboxServiceTest` — INSERT en markPublished scoped op tenant_id
-- [ ] **6h.** `ReminderSchedulerTest` — `send_at` berekening klopt, annulering scoped op tenant_id
-- [ ] **6i.** `TenantRegistrationControllerTest` — validaties, encryptie, response
-- [ ] **6j.** `AesEncryptionServiceTest` — encrypt/decrypt round-trip, null-handling
-
----
-
-### ✅ Afgerond — Fase 8 — Opdrachtgaps oplossen (openstaande items in Tier 1 hierboven)
-
-#### ✅ Snel opgelost
-
-- [x] **8a.** **Locatienaam + opmerkingen in berichttekst**
-  - `comments` veld in `AppointmentEvent`, gemapped in poller `toEvent()`
-  - `enrichComments()` in poller haalt comments op via `GET /ws/rest/v1/appointment?uuid={uuid}`
-  - `MessageHelper.locationSuffix()` + `commentsSuffix()` — alle 5 providers bijgewerkt
-
-- [x] **8b.** **Reminder overslaan als afspraak al voorbij is**
-  - `ReminderDispatchJob.processReminder()`: check `appointmentTime.isBefore(Instant.now())` → `status = 'skipped'`
-
-- [x] **8c.** **PII maskeren in logs**
-  - `MessageHelper.mask()`: `"+31612345678"` → `"+316****678"`, `"betty@example.com"` → `"b****@example.com"`
-  - Toegepast in `NotificationDispatcher` + alle provider debug-logs
-
-- [x] **8d.** **Tijdzone-weergave voor patiënten (NFR-13)** ✅
-  - `MessageHelper.formatTime(Instant, String timezone)` — per-tenant IANA timezone, fallback Europe/Amsterdam
-  - `tenants.timezone` kolom toegevoegd (DEFAULT 'Europe/Amsterdam'); validatie in `TenantRegistrationController`
-  - `AppointmentEvent.timezone` veld; `NotificationDispatcher` propageert tenant-timezone naar event vóór dispatch
-  - Alle 5 providers bijgewerkt: `formatTime(event.getAppointmentTime(), event.getTimezone())`
-  - Geverifieerd: tenant met `Asia/Singapore` → tijden in SGT; invalide timezone → HTTP 400
-
-- [x] **8e.** **Eén provider per organisatie** → opgelost via Fase 9 (tenant-model)
-  - `NotificationDispatcher` stuurt naar ÉÉN provider op basis van `tenant.providerName`; geen fan-out meer
-
-- [x] **8f.** **14-dagenretentie (NFR-10)** ✅
-  - `scheduler/DataRetentionJob.java` — `@Scheduled(cron = "0 0 2 * * *")` (elke nacht 02:00)
-  - Verwijdert rijen ouder dan 14 dagen uit: `notification_log`, `outbox_events`, `seen_appointments`, `scheduled_notifications`
-  - `async_flow_commands` en `sync_watermarks` worden NIET verwijderd (geen PII)
-
-- [x] **8g.** **1-jaarsretentie audit log (NFR-11)** ✅
-  - Nieuwe tabel `notification_audit_log` — alleen: tenant_id, appointment_uuid, event_type, provider, status, sent_at (geen phone/email/naam)
-  - `DataRetentionJob.archiveToAuditLog()` vult de audit log vóór de 14-daagse DELETE (idempotent via NOT EXISTS check)
-  - `DataRetentionJob.purgeOldAuditLog()` verwijdert audit-rijen ouder dan 1 jaar
-
-- [x] **8h.** **PII masking in notification_log (NFR-5)** ✅
-  - `OutboxService.buildPayloadJson()` gebruikt nu `MessageHelper.mask()` voor `patientPhone` en `patientEmail`
-  - Opgeslagen in DB: `"061****678"` en `"b****@example.com"` — nooit plaintext contactgegevens in logs
-  - Werkelijke contactgegevens alleen in geheugen tijdens verzending
-
-- [ ] **8i.** **TLS 1.3 / HTTPS documentatie (NFR-5)** — intern Docker-netwerk acceptabel voor dev; extern: NGINX reverse proxy + Let's Encrypt voor productie. Minimaal beschrijven in technische documentatie hoe dit ingericht wordt.
-
-- [x] **8j.** **AppointmentReconciler 500-bug fixen** ✅ — Was: `GET ?lastUpdated=...` → 500. Nu: `POST /ws/rest/v1/appointment/search` (zelfde als primaire poller).
-
-- [ ] **8k.** **Karaktersets aantonen (NFR-8)** — database is UTF-8 (`LC_COLLATE`, `LC_CTYPE`), Spring Boot gebruikt UTF-8, RabbitMQ messages zijn JSON met UTF-8. Dit toevoegen als opmerking in technische documentatie + aantonen via een testbericht met niet-Latijnse tekens (bijv. Arabisch/Chinees).
-
-- [ ] **8l.** **HL7 ACK-mechanisme documenteren (NFR-6)** — de opdracht noemt expliciet acknowledgements. RabbitMQ `auto-ack` + de `notification_log`-status dekt dit functioneel. Dit moet uitgelegd worden in de technische documentatie als de HL7-ACK-equivalent binnen onze architectuur.
-
-- [x] **8m.** **Provider-level retry bij 429/503 (NFR-6 + NFR-7)** ✅ — `FailedNotificationRetryJob` geïmplementeerd met exponential backoff (5 → 15 min), schema updated met `retry_count` + `next_retry_at`.
-
----
-
-### ✅ Afgerond — Fase 9 — Multi-tenant SaaS registratie & configuratie
-
-#### 9a. Tenant datamodel ✅
-- `tenants` tabel: id, slug, display_name, api_key_hash (SHA-256), api_key_enc (AES-256-GCM), openmrs_host, openmrs_user, openmrs_password_enc, provider_name (CHECK constraint), provider_api_key_enc, provider_extra_enc, **timezone** (IANA, DEFAULT 'Europe/Amsterdam'), active, created_at
-- Alle 6 overige tabellen hebben `tenant_id UUID NOT NULL REFERENCES tenants(id)`
-- Indices scoped op `tenant_id`
-
-#### 9b. Registratie-endpoint ✅
-- `POST /api/register` — geen auth vereist
-- Validaties: slug (alphanumeriek), displayName, openmrsHost, openmrsUser, openmrsPassword, providerName (één van vier), providerApiKey
-- Alle secrets encrypted vóór opslag; response bevat `{ tenantId, slug, displayName, apiKey }`
-- UI via React op http://localhost:3001
-
-#### 9c. API key authenticatie ✅
-- `TenantApiKeyFilter` — `OncePerRequestFilter` op `/api/**`
-- SHA-256 hash lookup (O(1) zonder decryptie)
-- `TenantContext.set(tenant)` voor rest van lifecycle; `clear()` in finally
-- Uitgezonderd: `/api/register`, `/api/admin/**`
-
-#### 9d. TenantContext doortrekken ✅
-- Poller: itereert actieve tenants, `RestTemplateFactory.buildForTenant()` per cyclus, circuit breaker per slug
-- Reconciler: zelfde patroon
-- Consumer: TenantContext gezet vanuit `event.getTenantId()`
-- ReminderDispatchJob: TenantContext per reminder-rij via `tenantService.findById(tenantId)`
-- OutboxRelayJob: TenantContext per outbox-rij
-
-#### 9e. Provider registry per tenant ✅
-- `ProviderCredentials(apiKey, extra)` record — runtime gedecrypteerd
-- Dispatcher filtert `List<NotificationProvider>` op `tenant.getProviderName()`; fallback naar SwiftSend
-- SecurePost JWT-cache keyed op `clientId` — meerdere tenants met SecurePost zijn geïsoleerd
-
-#### 9f. Admin endpoints ✅
-- `GET /api/admin/tenants` — beveiligd met `X-Admin-Key: ${saas.admin-key}`
-- `DELETE /api/admin/tenants/{id}` — soft delete via `active = false`
-
-#### 9g. Verificatie ✅ (met schone DB)
-- Tenant registreren → `{ tenantId, slug, displayName, apiKey }` ✓
-- Ongeldige API key → `401 Unauthorized` ✓
-- Admin endpoint met `X-Admin-Key` ✓
-- ReminderDispatchJob + OutboxRelayJob verwerken per tenant ✓
-- [ ] Volledige end-to-end flow met twee tenants (onderdeel van Tier 4: 7a-7g)
-
----
-
-### ℹ️ Fase 7 — Eindcontrole & oplevering (verwerkt in Tier 2/4 prioriteiten hierboven)
-
-> Alle Fase 7 taken staan uitgesplitst in de prioriteiten-tabel bovenaan.
-> - **ADR-logboek (Deliverable 3)**: ✅ compleet — ADR-001 t/m ADR-004 zijn aanwezig en dekken alle keuzes.
-> - **C4-diagrammen + procesvisualisatie (Deliverable 3)**: ✅ al aanwezig.
+- **Fase 1** — bugfixes (mock provider disabled, FHIR2 → REST v1)
+- **Fase 2** — `PersonContactService` voor patiënt contactgegevens
+- **Fase 3** — Outbox relay loop (`OutboxRelayJob`)
+- **Fase 4** — Reminder scheduling (24h + 1h)
+- **Fase 5** — Per-tenant `RestTemplate` + provider isolatie
+- **Fase 6** — 87 unit tests
+- **Fase 8** — NFR compliance (timezone, PII masking, retentie, retry)
+- **Fase 9** — Multi-tenant SaaS (registratie, API key auth, TenantContext)
+- **Fase 10** — Email logica verwijderd (phone-only)
+- **Fase 11** — Security hardening (GlobalExceptionHandler, generic errors, ObjectMapper voor JSON)
