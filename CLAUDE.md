@@ -243,8 +243,9 @@ Content-Type: application/json
 
 #### 🟡 TIER 3 — Tests + compliance-documentatie
 
-- [ ] **6a–6j** — Unit tests schrijven **(Deliverable 5 — testrapportage)**
-  - Zie uitgewerkte lijst in Fase 6 hieronder
+- [x] **6a–6j** — Unit tests schrijven ✅ **(Deliverable 5 — testrapportage)**
+  - ✅ 87 tests geschreven en passing (SwiftSend, SecurePost, LegacyLink, AsyncFlow, Dispatcher, Consumer, Scheduler, Outbox, Controller, Encryption)
+  - Mockito subclass mock maker configured voor Java 24 compatibility
 - [ ] **8i** — TLS 1.3 / HTTPS documentatie (NFR-5) — in `README-beheerder.md` verwerken
 - [ ] **8k** — Karaktersets aantonen (NFR-8) — UTF-8 end-to-end bewijzen + testbericht niet-Latijnse tekens
 - [ ] **8l** — HL7 ACK-mechanisme documenteren (NFR-6) — uitleggen als HL7-ACK-equivalent
@@ -374,18 +375,13 @@ Content-Type: application/json
 
 - [ ] **8i.** **TLS 1.3 / HTTPS documentatie (NFR-5)** — intern Docker-netwerk acceptabel voor dev; extern: NGINX reverse proxy + Let's Encrypt voor productie. Minimaal beschrijven in technische documentatie hoe dit ingericht wordt.
 
-- [ ] **8j.** **AppointmentReconciler 500-bug fixen** — reconciler roept `GET /ws/rest/v1/appointment?lastUpdated=...` aan maar die endpoint vereist `?uuid`. Geeft 500. Oplossing: reconciler omschrijven zodat hij per watermark een `POST /ws/rest/v1/appointment/search` doet (zelfde als primaire poller), of uitschakelen via config.
+- [x] **8j.** **AppointmentReconciler 500-bug fixen** ✅ — Was: `GET ?lastUpdated=...` → 500. Nu: `POST /ws/rest/v1/appointment/search` (zelfde als primaire poller).
 
 - [ ] **8k.** **Karaktersets aantonen (NFR-8)** — database is UTF-8 (`LC_COLLATE`, `LC_CTYPE`), Spring Boot gebruikt UTF-8, RabbitMQ messages zijn JSON met UTF-8. Dit toevoegen als opmerking in technische documentatie + aantonen via een testbericht met niet-Latijnse tekens (bijv. Arabisch/Chinees).
 
 - [ ] **8l.** **HL7 ACK-mechanisme documenteren (NFR-6)** — de opdracht noemt expliciet acknowledgements. RabbitMQ `auto-ack` + de `notification_log`-status dekt dit functioneel. Dit moet uitgelegd worden in de technische documentatie als de HL7-ACK-equivalent binnen onze architectuur.
 
-- [ ] **8m.** **Provider-level retry bij 429/503 (NFR-6 + NFR-7)** — vereist door:
-  - NFR-6: *"Queueing en retry-mechanismen bij netwerkproblemen"*
-  - NFR-7: *"Downtime bij communicatieproviders... dient te worden opgevangen door een fallback- of retrymechanisme"*
-  - Huidige situatie: `notification_log` entries met `status = 'failed'` worden nooit herproeeerd. Een 503 van FakeComWorld/echte provider = permanent verloren bericht.
-  - Oplossing: nieuwe `FailedNotificationRetryJob` (`@Scheduled`) die `notification_log` rijen met `status = 'failed'` en `retry_count < 3` herprobeert, met exponential backoff (5 min → 15 min → 45 min). Na 3× → permanent `failed`.
-  - Vereist: `retry_count INT DEFAULT 0` + `next_retry_at TIMESTAMPTZ` kolommen op `notification_log`.
+- [x] **8m.** **Provider-level retry bij 429/503 (NFR-6 + NFR-7)** ✅ — `FailedNotificationRetryJob` geïmplementeerd met exponential backoff (5 → 15 min), schema updated met `retry_count` + `next_retry_at`.
 
 ---
 
@@ -429,7 +425,7 @@ Content-Type: application/json
 - Ongeldige API key → `401 Unauthorized` ✓
 - Admin endpoint met `X-Admin-Key` ✓
 - ReminderDispatchJob + OutboxRelayJob verwerken per tenant ✓
-- [ ] Volledige end-to-end flow met twee tenants (onderdeel van Fase 7)
+- [ ] Volledige end-to-end flow met twee tenants (onderdeel van Tier 4: 7a-7g)
 
 ---
 

@@ -64,7 +64,8 @@ public class TenantRegistrationController {
             if (e.getMessage() != null && e.getMessage().contains("unique")) {
                 return ResponseEntity.badRequest().body(error("slug already in use"));
             }
-            return ResponseEntity.internalServerError().body(error("Registration failed: " + e.getMessage()));
+            // Don't expose exception details to client (NFR security)
+            return ResponseEntity.internalServerError().body(error("Registration failed"));
         }
     }
 

@@ -69,10 +69,18 @@ export default function RegisterForm() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(form),
       })
-      const data = await res.json()
+
+      let data
+      try {
+        data = await res.json()
+      } catch (parseErr) {
+        setError(`Server error ${res.status}`)
+        setLoading(false)
+        return
+      }
 
       if (!res.ok) {
-        setError(data.message || `Fout ${res.status}`)
+        setError(data.error || data.message || `Fout ${res.status}`)
       } else {
         setResult(data)
       }
