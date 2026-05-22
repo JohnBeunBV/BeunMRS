@@ -74,10 +74,9 @@ public class NotificationDispatcher {
             return;
         }
 
-        log.info("Dispatching event type={} appointment={} phone={} email={} tenant={} provider={}",
+        log.info("Dispatching event type={} appointment={} phone={} tenant={} provider={}",
                 event.getEventType(), event.getAppointmentUuid(),
                 MessageHelper.mask(event.getPatientPhone()),
-                MessageHelper.mask(event.getPatientEmail()),
                 tenant.getSlug(), target.providerName());
 
         try {

@@ -44,13 +44,19 @@ public class SwiftSendProvider implements NotificationProvider {
 
     @Override
     public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
+        if (event.getPatientPhone() == null) {
+            log.warn("[SwiftSend] Cannot send — patient has no phone number — appointment={}",
+                    event.getAppointmentUuid());
+            return NotificationResult.failure("Patient has no phone number");
+        }
+
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-API-KEY",       credentials.apiKey());
             headers.set("X-STUDENT-GROUP", studentGroup);
 
-            String recipient = event.getPatientPhone() != null ? event.getPatientPhone() : "unknown";
+            String recipient = event.getPatientPhone();
             log.debug("[SwiftSend] Sturen naar {} — appointment={}",
                     MessageHelper.mask(recipient), event.getAppointmentUuid());
 

@@ -115,7 +115,6 @@ public class OutboxService {
             node.put("eventType",       event.getEventType() != null ? event.getEventType().name() : "");
             // NFR-5: masked before storage
             node.put("patientPhone",    MessageHelper.mask(event.getPatientPhone()));
-            node.put("patientEmail",    MessageHelper.mask(event.getPatientEmail()));
             // Non-PII fields — needed by retry job to reconstruct the event
             if (event.getAppointmentTime() != null) {
                 node.put("appointmentTime", event.getAppointmentTime().toString());

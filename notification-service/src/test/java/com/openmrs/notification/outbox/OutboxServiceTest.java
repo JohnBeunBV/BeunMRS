@@ -79,11 +79,10 @@ class OutboxServiceTest {
     }
 
     @Test
-    void recordResult_payloadMasksPhoneAndEmail() {
+    void recordResult_payloadMasksPhone() {
         UUID tenantId = UUID.randomUUID();
         AppointmentEvent event = event(tenantId);
         event.setPatientPhone("+31612345678");
-        event.setPatientEmail("betty@example.com");
 
         AtomicReference<String> captured = new AtomicReference<>();
         doAnswer(inv -> {
@@ -101,11 +100,6 @@ class OutboxServiceTest {
                 .as("phone must be masked in DB")
                 .contains("+31****678")   // first 3 + **** + last 3
                 .doesNotContain("+31612345678");
-
-        assertThat(captured.get())
-                .as("email must be masked in DB")
-                .contains("b****@example.com")
-                .doesNotContain("betty@example.com");
     }
 
     @Test

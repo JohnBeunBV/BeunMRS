@@ -61,14 +61,19 @@ public class AsyncFlowProvider implements NotificationProvider {
 
     @Override
     public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
+        if (event.getPatientPhone() == null) {
+            log.warn("[AsyncFlow] Cannot send — patient has no phone number — appointment={}",
+                    event.getAppointmentUuid());
+            return NotificationResult.failure("Patient has no phone number");
+        }
+
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-API-KEY",       credentials.apiKey());
             headers.set("X-STUDENT-GROUP", studentGroup);
 
-            String destination = event.getPatientPhone() != null ? event.getPatientPhone()
-                    : (event.getPatientUuid() != null ? event.getPatientUuid() : "unknown");
+            String destination = event.getPatientPhone();
 
             Map<String, Object> body = Map.of(
                     "destination", destination,

@@ -82,9 +82,10 @@ public class LegacyLinkProvider implements NotificationProvider {
     }
 
     private String buildSoapEnvelope(AppointmentEvent event, String correlationId) {
-        String recipient = event.getPatientPhone() != null
-                ? event.getPatientPhone()
-                : (event.getPatientEmail() != null ? event.getPatientEmail() : "unknown");
+        if (event.getPatientPhone() == null) {
+            throw new IllegalArgumentException("Patient has no phone number");
+        }
+        String recipient = event.getPatientPhone();
         String time     = MessageHelper.formatTime(event.getAppointmentTime(), event.getTimezone());
         String loc      = MessageHelper.locationSuffix(event.getLocationName());
         String comments = MessageHelper.commentsSuffix(event.getComments());

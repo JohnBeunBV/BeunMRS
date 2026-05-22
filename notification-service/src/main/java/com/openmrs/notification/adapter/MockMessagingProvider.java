@@ -40,11 +40,17 @@ public class MockMessagingProvider implements NotificationProvider {
 
     @Override
     public NotificationResult send(AppointmentEvent event, ProviderCredentials credentials) {
+        if (event.getPatientPhone() == null) {
+            log.warn("[Mock] Cannot send — patient has no phone number — appointment={}",
+                    event.getAppointmentUuid());
+            return NotificationResult.failure("Patient has no phone number");
+        }
+
         try {
             Map<String, Object> payload = Map.of(
-                    "to",        event.getPatientPhone() != null ? event.getPatientPhone() : event.getPatientEmail(),
+                    "to",        event.getPatientPhone(),
                     "message",   buildMessage(event),
-                    "channel",   deriveChannel(event),
+                    "channel",   "sms",
                     "reference", event.getAppointmentUuid()
             );
 
@@ -83,9 +89,4 @@ public class MockMessagingProvider implements NotificationProvider {
         };
     }
 
-    private String deriveChannel(AppointmentEvent event) {
-        if (event.getPatientPhone() != null) return "sms";
-        if (event.getPatientEmail() != null) return "email";
-        return "unknown";
-    }
 }

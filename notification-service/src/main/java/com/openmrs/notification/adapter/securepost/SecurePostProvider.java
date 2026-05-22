@@ -50,7 +50,7 @@ public class SecurePostProvider implements NotificationProvider {
         this.studentGroup = studentGroup;
     }
 
-    @Override public NotificationChannel channel() { return NotificationChannel.EMAIL; }
+    @Override public NotificationChannel channel() { return NotificationChannel.SMS; }
     @Override public String providerName()          { return "SecurePost"; }
 
     @Override
@@ -78,21 +78,25 @@ public class SecurePostProvider implements NotificationProvider {
     }
 
     private NotificationResult doSend(AppointmentEvent event, String token) {
+        if (event.getPatientPhone() == null) {
+            log.warn("[SecurePost] Cannot send — patient has no phone number — appointment={}",
+                    event.getAppointmentUuid());
+            return NotificationResult.failure("Patient has no phone number");
+        }
+
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setBearerAuth(token);
             headers.set("X-STUDENT-GROUP", studentGroup);
 
-            String recipient = event.getPatientEmail() != null
-                    ? event.getPatientEmail() : "unknown@example.com";
+            String recipient = event.getPatientPhone();
             log.debug("[SecurePost] Sturen naar {} — appointment={}",
                     MessageHelper.mask(recipient), event.getAppointmentUuid());
 
             Map<String, Object> body = Map.of(
-                    "format",    "EMAIL",
+                    "format",    "SMS",
                     "recipient", recipient,
-                    "subject",   subjectFor(event),
                     "body",      buildMessage(event)
             );
 
@@ -157,16 +161,6 @@ public class SecurePostProvider implements NotificationProvider {
         int    expiresIn = (int) resp.getBody().getOrDefault("expiresIn", 180);
         log.debug("[SecurePost] Token cached for clientId={}, expires in {}s", clientId, expiresIn);
         return new TokenEntry(token, Instant.now().plusSeconds(expiresIn));
-    }
-
-    private String subjectFor(AppointmentEvent event) {
-        return switch (event.getEventType()) {
-            case SCHEDULED    -> "Afspraakbevestiging";
-            case UPDATED      -> "Afspraak gewijzigd";
-            case CANCELLED    -> "Afspraak geannuleerd";
-            case REMINDER_24H -> "Herinnering: afspraak morgen";
-            case REMINDER_1H  -> "Herinnering: afspraak over een uur";
-        };
     }
 
     private String buildMessage(AppointmentEvent event) {

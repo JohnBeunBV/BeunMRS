@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Enriches an AppointmentEvent with patient contact details (phone, email)
+ * Enriches an AppointmentEvent with patient phone number
  * by calling GET /ws/rest/v1/person/{uuid}?v=full.
  *
  * Cache is keyed by (tenantId, patientUuid) to avoid cross-tenant collisions.
@@ -56,7 +56,6 @@ public class PersonContactService {
         CachedContact cached = cache.get(cacheKey);
         if (cached != null) {
             event.setPatientPhone(cached.phone());
-            event.setPatientEmail(cached.email());
             return;
         }
 
@@ -73,19 +72,17 @@ public class PersonContactService {
             List<Map<String, Object>> attributes = (List<Map<String, Object>>) response.get("attributes");
             if (attributes == null) return;
 
-            String phone = null, email = null;
+            String phone = null;
             for (Map<String, Object> attr : attributes) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> attrType = (Map<String, Object>) attr.get("attributeType");
                 if (attrType == null) continue;
                 String display = (String) attrType.get("display");
                 if ("Telephone Number".equalsIgnoreCase(display)) phone = (String) attr.get("value");
-                if ("email".equalsIgnoreCase(display))            email = (String) attr.get("value");
             }
 
-            cache.put(cacheKey, new CachedContact(phone, email));
+            cache.put(cacheKey, new CachedContact(phone));
             event.setPatientPhone(phone);
-            event.setPatientEmail(email);
             log.debug("[PersonContact] Enriched patient={}", event.getPatientUuid());
 
         } catch (Exception ex) {
@@ -94,5 +91,5 @@ public class PersonContactService {
         }
     }
 
-    private record CachedContact(String phone, String email) {}
+    private record CachedContact(String phone) {}
 }

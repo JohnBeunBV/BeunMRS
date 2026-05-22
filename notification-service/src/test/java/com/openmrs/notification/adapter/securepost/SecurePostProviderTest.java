@@ -118,7 +118,7 @@ class SecurePostProviderTest {
         AppointmentEvent e = new AppointmentEvent();
         e.setAppointmentUuid("appt-sp-001");
         e.setPatientUuid("patient-sp-001");
-        e.setPatientEmail("patient@example.com");
+        e.setPatientPhone("+31612345678");
         e.setEventType(AppointmentEvent.EventType.SCHEDULED);
         e.setTimezone("Europe/Amsterdam");
         return e;
