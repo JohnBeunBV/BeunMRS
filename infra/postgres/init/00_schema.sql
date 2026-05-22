@@ -138,3 +138,18 @@ CREATE TABLE IF NOT EXISTS notification_audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_tenant
     ON notification_audit_log (tenant_id, sent_at DESC);
+
+-- Migration: FM-1 fix — voorkom dubbele dispatch in notification_log
+--
+-- Probleem: notification_log had geen unique constraint op (tenant_id, appointment_uuid,
+-- event_type, channel), waardoor bij gelijktijdige verwerking dubbele rijen mogelijk waren.
+--
+-- Oplossing: partial unique index die alleen 'sent' rijen bewaakt. Een 'failed' poging
+-- mag opnieuw worden geprobeerd en een nieuwe rij aanmaken; een 'sent' rij niet.
+--
+-- Voer uit met: psql -d notifications -f 01_fm1_unique_constraint.sql
+ 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_log_no_duplicate_sent
+    ON notification_log (tenant_id, patient_uuid, event_type, channel)
+    WHERE status = 'sent';
+ 
