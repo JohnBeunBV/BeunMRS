@@ -19,6 +19,9 @@
     <properties>
         <java.version>21</java.version>
         <loki4j.version>1.4.2</loki4j.version>
+        <!-- Override Spring Boot's managed Testcontainers version (1.19.x) — 1.20.x
+             fixes Docker Desktop named-pipe compatibility issues on Windows. -->
+        <testcontainers.version>1.20.4</testcontainers.version>
     </properties>
 
     <dependencies>
@@ -81,6 +84,18 @@
         <dependency>
             <groupId>org.springframework.amqp</groupId>
             <artifactId>spring-rabbit-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers — real Postgres for integration tests -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -77,7 +77,7 @@ Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënt
 | **D4a** | Realisatielogboek: ontwikkeltools | ❌ TODO |
 | **D4b** | Realisatielogboek: AI-tools + voorbeelden | ❌ TODO |
 | **D4c** | Realisatielogboek: commits per teamlid | ❌ TODO |
-| **D5** | Testrapportage | ❌ TODO (tests ✅, rapport ❌) |
+| **D5** | Testrapportage | ✅ `docs/testrapport.md` |
 
 ---
 
