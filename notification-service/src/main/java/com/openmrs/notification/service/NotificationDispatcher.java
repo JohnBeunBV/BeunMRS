@@ -9,6 +9,8 @@ import com.openmrs.notification.tenant.Tenant;
 import com.openmrs.notification.tenant.TenantContext;
 import com.openmrs.notification.tenant.TenantService;
 import com.openmrs.notification.util.MessageHelper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -31,13 +33,16 @@ public class NotificationDispatcher {
     private final List<NotificationProvider> providers;
     private final OutboxService              outboxService;
     private final TenantService              tenantService;
+    private final MeterRegistry              meterRegistry;
 
     public NotificationDispatcher(List<NotificationProvider> providers,
                                   OutboxService outboxService,
-                                  TenantService tenantService) {
+                                  TenantService tenantService,
+                                  MeterRegistry meterRegistry) {
         this.providers     = providers;
         this.outboxService = outboxService;
         this.tenantService = tenantService;
+        this.meterRegistry = meterRegistry;
     }
 
     public void dispatch(AppointmentEvent event) {
@@ -79,13 +84,29 @@ public class NotificationDispatcher {
                 MessageHelper.mask(event.getPatientPhone()),
                 tenant.getSlug(), target.providerName());
 
+        String providerName = target.providerName();
+        String tenantSlug   = tenant.getSlug();
+        Timer.Sample sample = Timer.start(meterRegistry);
         try {
             NotificationResult result = target.send(event, credentials);
-            outboxService.recordResult(event, target.providerName(), result);
+            sample.stop(meterRegistry.timer("provider_call_duration_seconds",
+                    "provider", providerName));
+            if (result.isSuccess()) {
+                meterRegistry.counter("notifications_sent_total",
+                        "provider", providerName, "tenant", tenantSlug).increment();
+            } else {
+                meterRegistry.counter("notifications_failed_total",
+                        "provider", providerName, "tenant", tenantSlug).increment();
+            }
+            outboxService.recordResult(event, providerName, result);
         } catch (Exception ex) {
+            sample.stop(meterRegistry.timer("provider_call_duration_seconds",
+                    "provider", providerName));
+            meterRegistry.counter("notifications_failed_total",
+                    "provider", providerName, "tenant", tenantSlug).increment();
             log.error("Unhandled error in provider={} for appointment={}",
-                    target.providerName(), event.getAppointmentUuid(), ex);
-            outboxService.recordResult(event, target.providerName(),
+                    providerName, event.getAppointmentUuid(), ex);
+            outboxService.recordResult(event, providerName,
                     NotificationResult.failure("Unhandled exception: " + ex.getMessage()));
         }
     }

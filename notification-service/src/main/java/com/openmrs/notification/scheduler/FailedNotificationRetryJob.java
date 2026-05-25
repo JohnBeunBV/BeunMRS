@@ -9,6 +9,7 @@ import com.openmrs.notification.service.PersonContactService;
 import com.openmrs.notification.tenant.Tenant;
 import com.openmrs.notification.tenant.TenantContext;
 import com.openmrs.notification.tenant.TenantService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -59,17 +60,20 @@ public class FailedNotificationRetryJob {
     private final TenantService              tenantService;
     private final PersonContactService       personContactService;
     private final ObjectMapper               objectMapper;
+    private final MeterRegistry              meterRegistry;
 
     public FailedNotificationRetryJob(JdbcTemplate jdbc,
                                       List<NotificationProvider> providers,
                                       TenantService tenantService,
                                       PersonContactService personContactService,
-                                      ObjectMapper objectMapper) {
+                                      ObjectMapper objectMapper,
+                                      MeterRegistry meterRegistry) {
         this.jdbc                 = jdbc;
         this.providers            = providers;
         this.tenantService        = tenantService;
         this.personContactService = personContactService;
         this.objectMapper         = objectMapper;
+        this.meterRegistry        = meterRegistry;
     }
 
     // ── Scheduled entry point ─────────────────────────────────────────────────
@@ -156,9 +160,11 @@ public class FailedNotificationRetryJob {
                            retry_count = ?
                      WHERE id = ?::uuid
                     """, retryCount + 1, id);
+                meterRegistry.counter("retry_attempts_total", "outcome", "success").increment();
                 log.info("[RetryJob] Herpoging geslaagd — log id={} na {} poging(en)",
                         id, retryCount + 1);
             } else {
+                meterRegistry.counter("retry_attempts_total", "outcome", "failed").increment();
                 handleFailedAttempt(id, retryCount, result.getErrorMessage());
             }
 
@@ -198,6 +204,7 @@ public class FailedNotificationRetryJob {
                    error_message = ?
              WHERE id = ?::uuid
             """, MAX_RETRIES, reason, id);
+        meterRegistry.counter("retry_attempts_total", "outcome", "permanently_failed").increment();
         log.error("[RetryJob] Log id={} permanent mislukt na {} pogingen: {}", id, MAX_RETRIES, reason);
     }
 

@@ -6,6 +6,8 @@ import com.openmrs.notification.service.NotificationDispatcher;
 import com.openmrs.notification.tenant.Tenant;
 import com.openmrs.notification.tenant.TenantContext;
 import com.openmrs.notification.tenant.TenantService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,15 +35,18 @@ public class ReminderDispatchJob {
     private final NotificationDispatcher dispatcher;
     private final ObjectMapper           objectMapper;
     private final TenantService          tenantService;
+    private final MeterRegistry          meterRegistry;
 
     public ReminderDispatchJob(JdbcTemplate jdbc,
                                NotificationDispatcher dispatcher,
                                ObjectMapper objectMapper,
-                               TenantService tenantService) {
+                               TenantService tenantService,
+                               MeterRegistry meterRegistry) {
         this.jdbc          = jdbc;
         this.dispatcher    = dispatcher;
         this.objectMapper  = objectMapper;
         this.tenantService = tenantService;
+        this.meterRegistry = meterRegistry;
     }
 
     @Scheduled(fixedDelayString   = "${reminder.dispatch.interval-ms:60000}",
@@ -67,10 +72,12 @@ public class ReminderDispatchJob {
         int sent   = 0;
         int errors = 0;
 
+        Timer.Sample batchSample = Timer.start(meterRegistry);
         for (Map<String, Object> row : due) {
             boolean ok = processReminder(row);
             if (ok) sent++; else errors++;
         }
+        batchSample.stop(meterRegistry.timer("reminder_batch_duration_seconds"));
 
         log.info("[Reminder] Dispatch klaar — verstuurd: {}, fouten: {}", sent, errors);
     }
@@ -110,6 +117,8 @@ public class ReminderDispatchJob {
                        SET status = 'skipped', sent_at = now()
                      WHERE id = ?::uuid
                     """, id);
+                meterRegistry.counter("reminders_dispatched_total",
+                        "type", type, "status", "skipped").increment();
                 return true;
             }
 
@@ -121,10 +130,14 @@ public class ReminderDispatchJob {
                  WHERE id = ?::uuid
                 """, id);
 
+            meterRegistry.counter("reminders_dispatched_total",
+                    "type", type, "status", "sent").increment();
             log.info("[Reminder] {} reminder verstuurd — appointment={}", type, appointmentUuid);
             return true;
 
         } catch (Exception ex) {
+            meterRegistry.counter("reminders_dispatched_total",
+                    "type", type, "status", "error").increment();
             log.error("[Reminder] Fout bij versturen {} reminder voor appointment={}: {}",
                     type, appointmentUuid, ex.getMessage(), ex);
             return false;

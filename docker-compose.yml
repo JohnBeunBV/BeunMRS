@@ -281,6 +281,17 @@ services:
 
   # ── Observability Stack ─────────────────────────────────────────────────────
 
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus
+    restart: unless-stopped
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=7d
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [observability-net, notification-net]
+    ports:
+      - "9090:9090"
+
   loki:
     image: grafana/loki:2.9.4
     container_name: loki

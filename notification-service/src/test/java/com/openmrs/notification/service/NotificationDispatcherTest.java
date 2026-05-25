@@ -8,6 +8,7 @@ import com.openmrs.notification.outbox.OutboxService;
 import com.openmrs.notification.tenant.Tenant;
 import com.openmrs.notification.tenant.TenantContext;
 import com.openmrs.notification.tenant.TenantService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,8 @@ class NotificationDispatcherTest {
         when(securePost.isEnabled()).thenReturn(true);
 
         dispatcher = new NotificationDispatcher(
-                List.of(swiftSend, securePost), outboxService, tenantService);
+                List.of(swiftSend, securePost), outboxService, tenantService,
+                new SimpleMeterRegistry());
 
         tenant = new Tenant();
         tenant.setId(UUID.randomUUID());
