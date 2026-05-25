@@ -70,12 +70,7 @@ public class OutboxService {
                         INSERT INTO notification_log
                             (tenant_id, patient_uuid, channel, event_type, status, sent_at, error_message, payload)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb)
-<<<<<<< Updated upstream
-                        ON CONFLICT (tenant_id, patient_uuid, event_type, channel)
-                            WHERE status = 'sent' DO NOTHING
-=======
                         ON CONFLICT (tenant_id, patient_uuid, event_type, channel) WHERE status = 'sent' DO NOTHING
->>>>>>> Stashed changes
                         """,
                         event.getTenantId(),
                         event.getPatientUuid(),

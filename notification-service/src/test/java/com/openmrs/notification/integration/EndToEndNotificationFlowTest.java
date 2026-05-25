@@ -15,6 +15,7 @@ import com.openmrs.notification.tenant.TenantRegistrationRequest;
 import com.openmrs.notification.tenant.TenantRegistrationResponse;
 import com.openmrs.notification.tenant.TenantService;
 import com.zaxxer.hikari.HikariDataSource;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -207,7 +208,7 @@ class EndToEndNotificationFlowTest {
         AtomicReference<ProviderCredentials> seenCredentials = new AtomicReference<>();
         NotificationProvider stub = stubProvider("SwiftSend", "msg-1", seenCredentials);
         NotificationDispatcher dispatcher = new NotificationDispatcher(
-                List.of(stub), outboxService, tenantService);
+                List.of(stub), outboxService, tenantService, new SimpleMeterRegistry());
 
         AppointmentEvent event = new AppointmentEvent();
         event.setAppointmentUuid("appt-it-1");
@@ -257,7 +258,7 @@ class EndToEndNotificationFlowTest {
         NotificationProvider swiftSend  = stubProvider("SwiftSend",  "a-1", new AtomicReference<>());
         NotificationProvider securePost = stubProvider("SecurePost", "b-1", new AtomicReference<>());
         NotificationDispatcher dispatcher = new NotificationDispatcher(
-                List.of(swiftSend, securePost), outboxService, tenantService);
+                List.of(swiftSend, securePost), outboxService, tenantService, new SimpleMeterRegistry());
 
         // Dispatch one event per tenant
         TenantContext.set(tA);
