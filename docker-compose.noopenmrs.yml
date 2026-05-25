@@ -1,14 +1,13 @@
 version: "3.9"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# BeunMRS Communication Platform — Complete Local Sandbox Stack
-# Command: docker compose up --build -d
-# Includes embedded OpenMRS O3 Environment for localized end-to-end testing.
+# BeunMRS Communication Platform — SaaS Isolated Core Stack (No Local OpenMRS)
+# Command: docker compose -f docker-compose.saas.yml up --build -d
+# Deploys only the core multi-tenant system. Hospitals register their own
+# self-hosted external OpenMRS endpoint coordinates via the frontend portal.
 # ─────────────────────────────────────────────────────────────────────────────
 
 networks:
-  openmrs-net:
-    driver: bridge
   broker-net:
     driver: bridge
   notification-net:
@@ -17,89 +16,12 @@ networks:
     driver: bridge
 
 volumes:
-  openmrs-db-data:
-  openmrs-app-data:
   notification-pg-data:
   rabbitmq-data:
   loki-data:
   grafana-data:
 
 services:
-
-  # ── Embedded OpenMRS O3 Environment ────────────────────────────────────────
-  db:
-    image: mariadb:10.11.7
-    container_name: db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${OPENMRS_DB_NAME}
-      MYSQL_USER: ${OPENMRS_DB_USER}
-      MYSQL_PASSWORD: ${OPENMRS_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${OPENMRS_DB_ROOT_PASSWORD}
-    volumes:
-      - openmrs-db-data:/var/lib/mysql
-    networks:
-      - openmrs-net
-    healthcheck:
-      test: "mysql --user=${OPENMRS_DB_USER} --password=${OPENMRS_DB_PASSWORD} --execute \"SHOW DATABASES;\""
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  backend:
-    image: openmrs/openmrs-reference-application-3-backend:${OPENMRS_TAG}
-    container_name: openmrs-backend
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      OMRS_DB_NAME: ${OPENMRS_DB_NAME}
-      OMRS_DB_HOSTNAME: db
-      OMRS_DB_USERNAME: ${OPENMRS_DB_USER}
-      OMRS_DB_PASSWORD: ${OPENMRS_DB_PASSWORD}
-      OMRS_CONFIG_MODULE_WEB_ADMIN: "true"
-      OMRS_CONFIG_AUTO_UPDATE_DATABASE: "true"
-      OMRS_CONFIG_CREATE_TABLES: "true"
-      OMRS_ADMIN_USER_PASSWORD: ${OPENMRS_ADMIN_PASSWORD}
-    volumes:
-      - openmrs-app-data:/openmrs/data
-      - ./openmrs/modules:/openmrs/data/modules
-      - ./openmrs/config:/openmrs/data/config
-    networks:
-      - openmrs-net
-      - broker-net
-      - observability-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/openmrs"]
-      interval: 30s
-      timeout: 10s
-      retries: 15
-      start_period: 180s
-
-  frontend:
-    image: openmrs/openmrs-reference-application-3-frontend:${OPENMRS_TAG}
-    container_name: frontend
-    restart: unless-stopped
-    environment:
-      SPA_PATH: /openmrs/spa
-      API_URL: /openmrs
-      SPA_CONFIG_URLS: /openmrs/spa/config-core_demo.json
-    networks:
-      - openmrs-net
-
-  gateway:
-    image: openmrs/openmrs-reference-application-3-gateway:${OPENMRS_TAG}
-    container_name: gateway
-    restart: unless-stopped
-    depends_on:
-      - backend
-      - frontend
-    networks:
-      - openmrs-net
-    ports:
-      - "${OPENMRS_PORT}:80"
 
   # ── Core SaaS Message Broker (RabbitMQ) ────────────────────────────────────
   rabbitmq:
@@ -170,9 +92,8 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST}
-      OPENMRS_BASE_URL: http://gateway/openmrs
-      OPENMRS_API_USER: ${OPENMRS_API_USER}
-      OPENMRS_API_PASSWORD: ${OPENMRS_ADMIN_PASSWORD}
+      # Dynamic Polling Core: Instructs service to poll remote IPs registered by individual tenants
+      OPENMRS_BASE_URL: "DYNAMIC_TENANT_MAPPED"
       FAKECOMWORLD_BASE_URL: http://fakecomworld:8080
       STUDENT_GROUP_HEADER: ${STUDENT_GROUP}
       SWIFTSEND_API_KEY: ${SWIFTSEND_API_KEY}
@@ -185,7 +106,6 @@ services:
     networks:
       - notification-net
       - broker-net
-      - openmrs-net
       - observability-net
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
