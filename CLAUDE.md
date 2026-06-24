@@ -70,14 +70,15 @@ Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënt
 
 | ID | Deliverable | Status |
 |----|-------------|--------|
-| **D1** | Technische documentatie (`docs/README-beheerder.md`) | ❌ TODO |
-| **D2** | Codebase + opstartinstructies (root `README.md`) | ⚠️ Basic — uitbreiden |
-| **D3a** | ADR-logboek | ✅ ADR-001 t/m ADR-004 |
-| **D3b** | C4 diagrammen (L1/L2/L3) + procesvisualisatie | ✅ Aanwezig |
-| **D4a** | Realisatielogboek: ontwikkeltools | ❌ TODO |
-| **D4b** | Realisatielogboek: AI-tools + voorbeelden | ❌ TODO |
-| **D4c** | Realisatielogboek: commits per teamlid | ❌ TODO |
-| **D5** | Testrapportage | ✅ `docs/testrapport.md` |
+| **D1** | Technische documentatie (`docs/README-beheerder.md`) | ✅ Aanwezig |
+| **D2** | Codebase + opstartinstructies (root `README.md`) | ✅ Bijgewerkt |
+| **D3a** | ADR-logboek | ✅ ADR-001 t/m ADR-010 |
+| **D3b** | C4 diagrammen (L1/L2/L3) + procesvisualisatie | ✅ `docs/C4-diagrammen.md` |
+| **D4a** | Realisatielogboek: ontwikkeltools | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
+| **D4b** | Realisatielogboek: AI-tools + voorbeelden | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
+| **D4c** | Realisatielogboek: commits per teamlid | ⚠️ Tabel aanwezig — bijwerken met `git log` vóór inlevering |
+| **D5** | Testrapportage | ✅ `docs/Tests/testrapport.md` (109 tests) |
+| **Traceerbaarheid** | Requirements → ADR → code → test | ✅ `docs/Traceerbaarheid/traceerbaarheidsmatrix.md` |
 
 ---
 
@@ -90,14 +91,15 @@ Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënt
 - [ ] **NFR-4 — OpenMRS 2.7.x verificatie**
   Test of de poller werkt tegen OpenMRS 2.7.x specifiek (huidige Docker draait reference-app 3.x). Documenteer welke endpoints we gebruiken en sinds welke OpenMRS-versie die bestaan.
 
-- [ ] **NFR-9b — OpenTelemetry of motivatie**
-  Opdracht noemt OpenTelemetry expliciet. Kies: implementeren (Micrometer Tracing + OTLP exporter) of motiveren in ADR waarom Loki + Prometheus voldoende is.
+- [x] ~~**NFR-9b — OpenTelemetry of motivatie**~~ ✅ Gemotiveerd in ADR-010: Micrometer + Prometheus + Loki dekt NFR-9a volledig; OTLP-overhead niet gerechtvaardigd voor single-service.
 
 ### Documentatie (TIER 2 — verplichte deliverables)
 
 - [x] ~~**NFR-5b — TLS 1.3 HTTPS**~~ ✅ Geïmplementeerd: `infra/nginx/` (NGINX + `ssl_protocols TLSv1.3`) — extern bereikbaar via `https://localhost:4000`
 
-- [ ] **D1 — `docs/README-beheerder.md`** (Deliverable 1)
+- [x] ~~**D1 — `docs/README-beheerder.md`**~~ ✅ Aanwezig (~700 regels, secties 1–14)
+
+- [ ] **D1 — `docs/README-beheerder.md`** (Deliverable 1) *(reeds aanwezig — onderstaande punten zijn verwerkt)*
   - Koppeling met OpenMRS (REST v1, poller-interval, credentials)
   - Stap-voor-stap tenant registreren + eerste afspraak testen
   - **NFR-5b — TLS 1.3 productie-setup**: self-signed vervangen door Let's Encrypt cert (volume mount in docker-compose)
@@ -108,21 +110,18 @@ Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënt
   - **NFR-12 — Uitbreidbaarheid** uitleggen (nieuwe RabbitMQ routing keys)
   - **NFR-2c — Beveiliging best practices** samenvatting
 
-- [ ] **D2 — Root `README.md`** uitbreiden (Deliverable 2)
-  - Vereisten (Docker, poorten)
-  - `docker compose up -d` workflow
-  - Voorbeeld-request (registratie + afspraak)
-  - Productie-env vars (`DB_ENCRYPTION_KEY`, `SAAS_ADMIN_KEY`, TLS)
+- [x] ~~**D2 — Root `README.md`**~~ ✅ Bijgewerkt met documentatietabel, traceerbaarheidslinks, projectstructuur
 
-- [ ] **D4 — Realisatielogboek** (Deliverable 4)
-  - **D4a** Ontwikkeltools (IDE's gebruikt)
-  - **D4b** AI-tools + representatieve voorbeelden (prompts, screenshots)
-  - **D4c** Commits per teamlid (Git log filter per author)
+- [x] ~~**D3a — ADR-logboek**~~ ✅ ADR-001 t/m ADR-010 aanwezig in `docs/ADR 1 - 4/`
 
-- [ ] **D5 — Testrapport** (Deliverable 5)
-  - 87 unit tests overzicht
-  - Scenario's, resultaten, dekking
-  - Uitbreidbaarheid aangetoond via demo "nieuwe provider toevoegen"
+- [x] ~~**D3b — C4 diagrammen**~~ ✅ `docs/C4-diagrammen.md` met L1/L2/L3 en procesvisualisatie
+
+- [x] ~~**D4 — Realisatielogboek**~~ ✅ `docs/Realisatielogboek/realisatielogboek.md` (D4a/b/c)
+  - ⚠️ D4c commits-tabel: bijwerken met `git log`-output vóór inlevering
+
+- [x] ~~**D5 — Testrapport**~~ ✅ `docs/Tests/testrapport.md` (109 tests, requirement-mapping aanwezig)
+
+- [x] ~~**Traceerbaarheidsmatrix**~~ ✅ `docs/Traceerbaarheid/traceerbaarheidsmatrix.md` — alle 23 requirements → ADR → code → test
 
 ### Aantoonbaarheid (TIER 3 — bewijs in documentatie)
 
