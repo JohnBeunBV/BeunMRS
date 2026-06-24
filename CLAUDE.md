@@ -16,6 +16,8 @@ Een **multi-tenant SaaS notificatiemodule** die naast OpenMRS draait en patiënt
 
 > **Dit is de leidende lijst.** Elke regel uit `docs/OpdrachtOpenMRS.md` is hier gemapped. Werk dit bij na elke wijziging.
 
+Zie @AGENTS.md voor rubric en sprints
+
 ### Functionele eisen (FR)
 
 | ID | Eis | Implementatie | Status |
