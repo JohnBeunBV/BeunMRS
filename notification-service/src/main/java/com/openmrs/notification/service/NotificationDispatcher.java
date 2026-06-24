@@ -86,11 +86,14 @@ public class NotificationDispatcher {
 
         String providerName = target.providerName();
         String tenantSlug   = tenant.getSlug();
+        Timer providerTimer = Timer.builder("provider_call_duration_seconds")
+                .tag("provider", providerName)
+                .publishPercentileHistogram()
+                .register(meterRegistry);
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             NotificationResult result = target.send(event, credentials);
-            sample.stop(meterRegistry.timer("provider_call_duration_seconds",
-                    "provider", providerName));
+            sample.stop(providerTimer);
             if (result.isSuccess()) {
                 meterRegistry.counter("notifications_sent_total",
                         "provider", providerName, "tenant", tenantSlug).increment();
@@ -100,8 +103,7 @@ public class NotificationDispatcher {
             }
             outboxService.recordResult(event, providerName, result);
         } catch (Exception ex) {
-            sample.stop(meterRegistry.timer("provider_call_duration_seconds",
-                    "provider", providerName));
+            sample.stop(providerTimer);
             meterRegistry.counter("notifications_failed_total",
                     "provider", providerName, "tenant", tenantSlug).increment();
             log.error("Unhandled error in provider={} for appointment={}",

@@ -1,0 +1,185 @@
+{
+  "title": "BeunMRS — Complete Monitoring",
+  "uid": "beunmrs-complete",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+
+    { "id": 1, "title": "Service uptime", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "process_uptime_seconds", "legendFormat": "uptime" }],
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "fixedColor": "blue", "mode": "fixed" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 2, "title": "JVM Heap gebruik (%)", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(jvm_memory_used_bytes{area=\"heap\"}) / sum(jvm_memory_max_bytes{area=\"heap\"}) * 100", "legendFormat": "Heap %" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 3, "title": "DB connecties actief", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "hikaricp_connections_active", "legendFormat": "Actief" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 8 }, { "color": "red", "value": 15 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+
+    { "id": 4, "title": "HTTP requests / min", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(http_server_requests_seconds_count[1m])) * 60 or vector(0)", "legendFormat": "req/min" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "blue", "mode": "fixed" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+
+    { "id": 10, "title": "Notificaties", "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 }, "collapsed": false, "panels": []
+    },
+
+    { "id": 11, "title": "Notificaties verstuurd / min (per provider)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(notifications_sent_total[1m]) * 60", "legendFormat": "✓ {{provider}} ({{tenant}})" },
+        { "expr": "rate(notifications_failed_total[1m]) * 60", "legendFormat": "✗ {{provider}} ({{tenant}})" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } },
+        "overrides": [{ "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    { "id": 12, "title": "Provider call latency (p50 / p95 / p99)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(provider_call_duration_seconds_bucket[2m]))", "legendFormat": "p50 {{provider}}" },
+        { "expr": "histogram_quantile(0.95, rate(provider_call_duration_seconds_bucket[2m]))", "legendFormat": "p95 {{provider}}" },
+        { "expr": "histogram_quantile(0.99, rate(provider_call_duration_seconds_bucket[2m]))", "legendFormat": "p99 {{provider}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+
+    { "id": 13, "title": "Foutpercentage notificaties (%)", "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "(100 * sum(rate(notifications_failed_total[5m])) / (sum(rate(notifications_sent_total[5m])) + sum(rate(notifications_failed_total[5m])) + 0.001)) or vector(0)", "legendFormat": "Error rate %" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 15 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 14, "title": "Totaal notificaties verstuurd", "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(notifications_sent_total) or vector(0)", "legendFormat": "Totaal verstuurd" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "green", "mode": "fixed" } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 15, "title": "Totaal permanent mislukt", "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(retry_attempts_total{outcome=\"permanently_failed\"}) or vector(0)", "legendFormat": "Permanent mislukt" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 20, "title": "Reminders & Retry", "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "collapsed": false, "panels": []
+    },
+
+    { "id": 21, "title": "Reminders dispatched per type (24h / 1h)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(reminders_dispatched_total{status=\"sent\"}[2m]) * 60", "legendFormat": "Verstuurd ({{type}})" },
+        { "expr": "rate(reminders_dispatched_total{status=\"skipped\"}[2m]) * 60", "legendFormat": "Overgeslagen ({{type}})" },
+        { "expr": "rate(reminders_dispatched_total{status=\"error\"}[2m]) * 60", "legendFormat": "Fout ({{type}})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+
+    { "id": 22, "title": "Retry job uitkomsten", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(retry_attempts_total[5m]) * 60", "legendFormat": "{{outcome}}" }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+
+    { "id": 30, "title": "Queues & Buffers", "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }, "collapsed": false, "panels": []
+    },
+
+    { "id": 31, "title": "Pending reminders (queue-diepte)", "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "scheduled_notifications_pending", "legendFormat": "Pending" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 200 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 32, "title": "Gefaalde notificaties (wachten op retry)", "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "notification_log_failed", "legendFormat": "Failed" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 33, "title": "Outbox events pending (RabbitMQ buffer)", "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "outbox_events_pending", "legendFormat": "Outbox" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    { "id": 40, "title": "Live Logs", "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 }, "collapsed": false, "panels": []
+    },
+
+    { "id": 41, "title": "Poller — Live feed (elke 2 min een poll)", "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{service=\"notification-svc\"} |~ \"(?i)(polling|poller|afspraken|appointment|Reminder|reminder|ReminderScheduler|seen_appointment|watermark)\"", "legendFormat": "poller" }],
+      "options": { "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true }
+    },
+
+    { "id": 42, "title": "Errors & Warnings", "type": "logs",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{service=\"notification-svc\"} |~ \"(?i)(error|warn|exception|failed|mislukt)\"", "legendFormat": "errors" }],
+      "options": { "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true }
+    },
+
+    { "id": 43, "title": "Notification-svc — Alle logs", "type": "logs",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{service=\"notification-svc\"}", "legendFormat": "notification-svc" }],
+      "options": { "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true }
+    },
+
+    { "id": 45, "title": "FakeComWorld — Ontvangen berichten", "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{service=\"fakecomworld\"}", "legendFormat": "fakecomworld" }],
+      "options": { "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true }
+    },
+
+    { "id": 44, "title": "Alle services — Combined log stream", "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 56 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{ "expr": "{service=~\"notification-svc|openmrs-backend|fakecomworld|rabbitmq\"}", "legendFormat": "{{service}}" }],
+      "options": { "showTime": true, "sortOrder": "Descending", "dedupStrategy": "none", "wrapLogMessage": true }
+    }
+
+  ]
+}
