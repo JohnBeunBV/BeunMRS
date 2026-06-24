@@ -255,11 +255,15 @@ BeunMRS/
 │   ├── promtail/           # Log collector configuratie
 │   └── grafana/            # Dashboards + datasource provisioning
 └── docs/
-    ├── ADR 1 - 4/          # Architectuurbeslissingen
-    ├── FMEA/               # Failure Mode Effect Analysis
+    ├── ADR 1 - 4/          # Architectuurbeslissingen (ADR-001 t/m ADR-010)
+    ├── C4-diagrammen.md    # C4 L1/L2/L3 diagrammen + procesvisualisatie
+    ├── FMEA/               # Failure Mode Effect Analysis (11 modes + risicomatrix)
+    ├── Traceerbaarheid/    # Traceerbaarheidsmatrix: req → ADR → code → test
+    ├── Realisatielogboek/  # D4a/b/c: tools, AI-gebruik, commits per teamlid
     ├── PerformanceRapport/ # Belastingstests (166 notif/sec)
     ├── Security/           # Security audit rapport
-    └── Info/               # QuickstartGuide, Postman requests
+    ├── Tests/              # Testrapport (109 tests)
+    └── Info/               # Opdrachtomschrijving, Postman requests
 ```
 
 ---
@@ -274,6 +278,22 @@ BeunMRS/
 | `comments` altijd `null` | Bekend — poller doet extra `GET /appointment?uuid=` om dit op te halen |
 | FHIR2 Appointment werkt niet | HAPI-0302 fout — we gebruiken REST v1 (zie ADR-003) |
 | Port 80 al in gebruik | Stop lokale webserver of pas `OPENMRS_PORT` aan in `.env` |
+
+---
+
+## Documentatie & Traceerbaarheid
+
+| Document | Inhoud |
+|---|---|
+| [Traceerbaarheidsmatrix](docs/Traceerbaarheid/traceerbaarheidsmatrix.md) | Koppeling: elke requirement → ADR → implementatieklasse → test |
+| [C4-diagrammen](docs/C4-diagrammen.md) | Systeemcontext (L1), Containers (L2), Componenten notification-svc (L3) |
+| [ADR-001 t/m ADR-010](docs/ADR%201%20-%204/) | Alle architectuurbeslissingen met alternatieven en onderbouwing |
+| [FMEA](docs/FMEA/FMEA_Documentatie.md) | 11 failure modes met risicomatrix, ADR-koppeling, code en tests |
+| [Testrapport](docs/Tests/testrapport.md) | 109 tests: unit/security/contract/integratie + requirement-mapping |
+| [Beheerdershandleiding](docs/README-beheerder.md) | Installatie, tenant-configuratie, productie-TLS, monitoring |
+| [Realisatielogboek](docs/Realisatielogboek/realisatielogboek.md) | Ontwikkeltools, AI-gebruik, commits per teamlid |
+| [Security Audit](docs/Security/SECURITY-AUDIT.md) | OWASP top 10 verificatie, productie-checklist |
+| [Performance Rapport](docs/PerformanceRapport/PERFORMANCE-RAPPORT.md) | Belastingstest: 166 notif/sec, 100% outbox success |
 
 ---
 

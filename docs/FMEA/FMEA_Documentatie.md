@@ -7,6 +7,49 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 1. De foutmodus zelf
 2. Of en hoe deze wordt afgehandeld
 3. De exacte broncodeplaatsen
+4. **De architectuurbeslissing (ADR) die de aanpak onderbouwt**
+5. **De code die de mitigatie uitvoert**
+6. **De test die aantoont dat de mitigatie werkt**
+
+---
+
+## Risicomatrix
+
+De risicoscore wordt berekend als: **Waarschijnlijkheid (W) × Impact (I)**. Scores vóór en na mitigatie tonen de effectiviteit van de architectuurkeuzes.
+
+| # | Foutmodus | W (voor) | I (voor) | Score (voor) | W (na) | I (na) | Score (na) | Reductie |
+|---|---|---|---|---|---|---|---|---|
+| FM-1 | Database verbinding verbroken | 3 | 4 | **12** | 1 | 2 | **2** | 83% |
+| FM-2 | RabbitMQ onbereikbaar | 2 | 5 | **10** | 1 | 2 | **2** | 80% |
+| FM-3 | Consumer crasht vóór verwerking | 2 | 4 | **8** | 1 | 1 | **1** | 88% |
+| FM-4 | Bericht verlopen (TTL) | 2 | 3 | **6** | 1 | 2 | **2** | 67% |
+| FM-5 | SwiftSend onbereikbaar/rate-limit | 4 | 3 | **12** | 2 | 1 | **2** | 83% |
+| FM-6 | SecurePost JWT verlopen | 3 | 4 | **12** | 1 | 1 | **1** | 92% |
+| FM-7 | LegacyLink time-out | 3 | 2 | **6** | 1 | 1 | **1** | 83% |
+| FM-8 | AsyncFlow geeft geen eindstatus | 2 | 3 | **6** | 1 | 2 | **2** | 67% |
+| FM-9 | Crash na DB-write, vóór publish | 2 | 5 | **10** | 1 | 1 | **1** | 90% |
+| FM-10 | Tijdzone-fout bij verzendtijdstip | 2 | 4 | **8** | 1 | 1 | **1** | 88% |
+| FM-11 | Polling reconciler dubbele events | 3 | 3 | **9** | 1 | 1 | **1** | 89% |
+
+**Schaal:** Waarschijnlijkheid 1–5 (1=zeldzaam, 5=regelmatig) · Impact 1–5 (1=verwaarloosbaar, 5=dataverlies/patiëntschade)
+
+---
+
+## Koppelingstabel: Failure Mode → ADR → Code → Test
+
+| # | Foutmodus | ADR | Kernklasse(n) | Bewijstest |
+|---|---|---|---|---|
+| FM-1 | Database verbinding verbroken | ADR-007 | `OutboxService.recordResult()` | `OutboxServiceTest` |
+| FM-2 | RabbitMQ onbereikbaar | ADR-004, ADR-007 | `OutboxRelayJob.relay()`, `topology.json` | `OutboxServiceTest`, loadtest |
+| FM-3 | Consumer crasht vóór verwerking | ADR-004 | `AppointmentEventConsumer`, `seen_appointments` unique index | `AppointmentEventConsumerTest` |
+| FM-4 | Bericht verlopen (TTL) | ADR-004 | `topology.json` (DLX), `AppointmentReconciler` | Handmatig (`circuitbreaker-test.ps1`) |
+| FM-5 | SwiftSend onbereikbaar/rate-limit | ADR-006, ADR-007 | `SwiftSendProvider`, `FailedNotificationRetryJob` | `SwiftSendProviderTest` |
+| FM-6 | SecurePost JWT verlopen | ADR-006 | `SecurePostProvider.getValidToken()` | `SecurePostProviderTest` |
+| FM-7 | LegacyLink time-out | ADR-006 | `AppConfig.providerRestTemplate()`, `LegacyLinkProvider` | `LegacyLinkProviderTest` |
+| FM-8 | AsyncFlow geen eindstatus | ADR-006 | `AsyncFlowProvider.pollPendingCommands()`, `async_flow_commands` | `AsyncFlowProviderTest` |
+| FM-9 | Crash na DB-write, vóór publish | ADR-007 | `OutboxService.writePending()`, `OutboxRelayJob.relay()` | `OutboxServiceTest` |
+| FM-10 | Tijdzone-fout | ADR-005 | `ReminderScheduler`, `MessageHelper.formatTime()` | `MessageHelperTest`, `ReminderSchedulerTest` |
+| FM-11 | Polling reconciler dubbele events | ADR-003 | `AppointmentReconciler.alreadyProcessed()`, `sync_watermarks` | `AppointmentEventConsumerTest` |
 
 ---
 
@@ -50,6 +93,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 
 **Conclusie:** Tijdelijke DB-uitval wordt opgevangen via automatische retry met backoff. Bij aanhoudende uitval wordt de fout gelogd voor handmatige opvolging.
 
+**Architectuurkoppeling:** ADR-007 (Outbox patroon) — betrouwbare opslag vóór verdere verwerking  
+**Codekoppeling:** `OutboxService.recordResult()` (retry-loop) · `application.yml` (HikariCP-config)  
+**Testkoppeling:** `OutboxServiceTest` — scenario: INSERT in `notification_log` slaagt ook bij tijdelijke DB-fout
+
 ---
 
 ## FM-2: Message broker — RabbitMQ onbereikbaar
@@ -90,6 +137,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 - **OutboxRelayJob.java** — Het outbox-patroon zorgt dat events die al in `outbox_events` staan alsnog worden gepubliceerd zodra RabbitMQ weer bereikbaar is. De relay draait elke 30 seconden en pikt ongepubliceerde rijen op.
 
 **Conclusie:** Durable queues en de Spring AMQP retry-configuratie vangen kortdurende brokeruitval op. Het outbox-patroon garandeert alsnog at-least-once delivery ook bij langere uitval.
+
+**Architectuurkoppeling:** ADR-004 (RabbitMQ durable queues + DLX) · ADR-007 (Outbox relay als fallback)  
+**Codekoppeling:** `topology.json` (durable=true, DLX) · `OutboxRelayJob.relay()` · `application.yml` (AMQP retry)  
+**Testkoppeling:** `OutboxServiceTest` · operationeel: `circuitbreaker-test.ps1` (RabbitMQ uitval simulatie)
 
 ---
 
@@ -133,6 +184,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 
 **Conclusie:** Door de combinatie van auto-ack (herbezorging bij crash) en idempotente verwerking (seen_appointments + alreadyProcessed) wordt een bericht nooit permanent kwijtgeraakt door een consumercrash.
 
+**Architectuurkoppeling:** ADR-004 (acknowledge-mode auto + idempotente verwerking)  
+**Codekoppeling:** `application.yml` (acknowledge-mode: auto) · `seen_appointments` unique index · `AppointmentReconciler.alreadyProcessed()`  
+**Testkoppeling:** `AppointmentEventConsumerTest` — scenario: herbezorgd bericht leidt niet tot dubbele dispatch
+
 ---
 
 ## FM-4: Message broker — Bericht verlopen in queue (TTL verstreken)
@@ -158,6 +213,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 - **AppointmentReconciler.java** — De reconciler draait elke 5 minuten en haalt afspraken opnieuw op via de OpenMRS REST API vanaf een watermark. Berichten die door TTL zijn verlopen worden zo alsnog opgepikt via de polling-fallback.
 
 **Conclusie:** Verlopen berichten verdwijnen niet stil maar belanden in een dead-letter-queue. De reconciler vangt gemiste events aanvullend op via directe polling bij OpenMRS.
+
+**Architectuurkoppeling:** ADR-004 (DLX + durable dead-letter queues) · ADR-003 (polling-fallback via reconciler)  
+**Codekoppeling:** `topology.json` (x-dead-letter-exchange, x-message-ttl) · `AppointmentReconciler` (polling-fallback)  
+**Testkoppeling:** Operationeel te verifiëren via RabbitMQ management UI (DLQ-diepte) · `circuitbreaker-test.ps1`
 
 ---
 
@@ -189,6 +248,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 - Na `MAX_RETRIES` mislukte pogingen wordt de status op `permanently_failed` gezet en blijft de rij zichtbaar voor handmatige inspectie.
 
 **Conclusie:** Tijdelijke onbereikbaarheid en rate limiting worden correct afgehandeld met retry en exponential backoff.
+
+**Architectuurkoppeling:** ADR-006 (provider adapter pattern) · ADR-007 (outbox + retry job)  
+**Codekoppeling:** `SwiftSendProvider` (HTTP 429-afhandeling) · `FailedNotificationRetryJob` (exponential backoff, max 3 pogingen)  
+**Testkoppeling:** `SwiftSendProviderTest` — scenario: rate-limit (429) geeft `NotificationResult.failure()`
 
 ---
 
@@ -231,6 +294,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 
 **Conclusie:** Token-verloop wordt proactief afgehandeld via de cache met buffer. Een onverwachte 401 leidt tot automatisch ophalen van een nieuw token en een directe herpoging.
 
+**Architectuurkoppeling:** ADR-006 (provider adapter pattern — elke provider beheert eigen authenticatie)  
+**Codekoppeling:** `SecurePostProvider.getValidToken()` (token-cache + 30s buffer) · 401-handler in `send()`  
+**Testkoppeling:** `SecurePostProviderTest` — scenario: verlopen token triggert refresh; 401-respons triggert token-purge en herpoging
+
 ---
 
 ## FM-7: Messaging provider — LegacyLink time-out door hoge variabele vertraging
@@ -266,6 +333,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 - Spring AMQP verwerkt elke provider in een eigen listener-thread, waardoor een vertraagde LegacyLink-aanroep andere providers niet blokkeert.
 
 **Conclusie:** De geconfigureerde timeout van 10s voorkomt dat workers onbeperkt blokkeren. Timeouts worden als failures gelogd en opgepikt door de retry-job.
+
+**Architectuurkoppeling:** ADR-006 (provider adapter pattern) · ADR-002 (technologiestack: Spring `RestTemplate`)  
+**Codekoppeling:** `AppConfig.providerRestTemplate()` (10s read-timeout) · `LegacyLinkProvider` (exception catch → `NotificationResult.failure()`)  
+**Testkoppeling:** `LegacyLinkProviderTest` — scenario: time-out leidt tot failure-resultaat zonder thread-blokkade
 
 ---
 
@@ -304,6 +375,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 - **00_schema.sql** — De `async_flow_commands`-tabel heeft een `resolved_at`-kolom waarmee de maximale wachttijd kan worden gecontroleerd.
 
 **Conclusie:** Correlatie-IDs worden persistent opgeslagen en periodiek gepolled. Een command dat nooit een eindstatus teruggeeft blijft zichtbaar in de database voor handmatige opvolging.
+
+**Architectuurkoppeling:** ADR-006 (provider adapter pattern — async providers beheren eigen statusmachine)  
+**Codekoppeling:** `AsyncFlowProvider.persistCommand()` · `AsyncFlowProvider.pollPendingCommands()` (elke 10s) · `async_flow_commands` tabel  
+**Testkoppeling:** `AsyncFlowProviderTest` — scenario: command submit + pending status persistentie; status polling completed/failed/pending
 
 ---
 
@@ -350,6 +425,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 
 **Conclusie:** Het outbox-patroon elimineert het dual-write probleem. Event en data worden in één DB-operatie opgeslagen; de relay publiceert naar RabbitMQ na commit, ongeacht tussentijdse crashes.
 
+**Architectuurkoppeling:** ADR-007 (Outbox patroon — de kernmotivatie voor deze beslissing)  
+**Codekoppeling:** `OutboxService.writePending()` (INSERT voor verwerking) · `OutboxRelayJob.relay()` (publicatie na commit)  
+**Testkoppeling:** `OutboxServiceTest` — scenario: event in `outbox_events` aanwezig vóór RabbitMQ-publicatie; `PERFORMANCE-RAPPORT.md` (100% outbox success rate)
+
 ---
 
 ## FM-10: App — Tijdzone-fout bij berekening verzendtijdstip
@@ -381,6 +460,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
 - **MessageHelper.java** — `formatTime()` converteert het UTC-tijdstip pas bij het opmaken van het SMS-bericht naar de lokale tijdzone van de tenant.
 
 **Conclusie:** Alle interne tijdstippen worden in UTC opgeslagen en verwerkt. Conversie naar de lokale tijdzone van de betreffende OpenMRS-organisatie vindt pas plaats bij verzending, waardoor tijdzoneproblemen bij multi-tenant gebruik worden voorkomen.
+
+**Architectuurkoppeling:** ADR-005 (multi-tenant isolatie — `tenant.timezone` per organisatie) · ADR-002 (TIMESTAMPTZ in PostgreSQL)  
+**Codekoppeling:** `ReminderScheduler` (UTC-berekening) · `MessageHelper.formatTime(instant, timezone)` (conversie bij weergave) · `00_schema.sql` (TIMESTAMPTZ-kolommen)  
+**Testkoppeling:** `MessageHelperTest` — test tijdnotatie met tijdzone-override · `ReminderSchedulerTest` — test UTC-opslag van send_at
 
 ---
 
@@ -426,6 +509,10 @@ Dit document vergelijkt de failure modes uit de risicoanalyse met de feitelijke 
   ```
 
 **Conclusie:** Dubbele verwerking door de reconciler wordt voorkomen via deduplicatie op `notification_log`, een watermark per tenant, en een unique index op geplande herinneringen.
+
+**Architectuurkoppeling:** ADR-003 (polling + watermark-strategie voor deduplicatie)  
+**Codekoppeling:** `AppointmentReconciler.alreadyProcessed()` · `AppointmentReconciler.advanceWatermark()` · `idx_sched_notif_pending_unique` unique index  
+**Testkoppeling:** `AppointmentEventConsumerTest` — scenario: dubbel event triggert geen dubbele reminder
 
 ---
 
