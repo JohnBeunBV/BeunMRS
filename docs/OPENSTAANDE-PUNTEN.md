@@ -100,8 +100,14 @@ Deze staan als ⚠️ in de traceerbaarheidsmatrix. Afmaken = "23/23 aantoonbaar
 ### B1 🟡 NFR-4 — OpenMRS 2.7.x
 Zie [D2](#d2--ontbrekende-adrs-controleren)/onderbouwing. Snelste route: korte motivatie-notitie dat we uitsluitend `/ws/rest/v1/`-endpoints gebruiken (stabiel sinds 2.x) en dat de poller-laag uitwisselbaar is (ADR-003). Eventueel ADR-011. **Inspanning: ~1 u.**
 
-### B2 🟡 NFR-8 — UTF-8 testbericht
-Maak een afspraak met Arabische/Chinese `comments`, volg door de stack, screenshot van intacte tekst in `notification_log` + provider-payload. Leg vast in README-beheerder + `docs/Tests/`. **Inspanning: ~1 u.**
+### B2 ✅ NFR-8 — UTF-8 testbericht
+**Opgelost (2026-06-25):** afspraak aangemaakt met Arabische + Chinese tekst (`comments: "يرجى الحضور صائمًا — 请空腹前来。带上您的护照。"`), eind-tot-eind uitgevoerd en gedocumenteerd in `docs/Tests/testrapport.md` §3.17.
+
+**Bevindingen:**
+- PostgreSQL slaat UTF-8 correct op: Arabisch 18 chars → 34 bytes, Chinees 7 chars → 21 bytes ✅
+- Spring Boot gebruikt `StandardCharsets.UTF_8` overal expliciet ✅
+- Em dash (U+2014, 3-byte) overleeft de OpenMRS-grens intact ✅
+- Arabisch/Chinees wordt door de OpenMRS REST-API gecorrumpeerd naar `?` (MySQL-beperking in testomgeving) — dit is vóór onze module; onze stack heeft geen eigen encoding-verlies ⚠️
 
 ### B3 🟡 NFR-9a — Grafana dashboard-bewijs
 Draai `scripts\loadtest.ps1 -Scenario stress`, screenshot dashboard (messages/min, errors, retries, per-provider latency), toevoegen aan `docs/PerformanceRapport/`. **Inspanning: ~1 u.**
