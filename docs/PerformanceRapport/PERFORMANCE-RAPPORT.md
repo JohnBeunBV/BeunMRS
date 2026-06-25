@@ -183,18 +183,28 @@ Alle bovenstaande metrics zijn beschikbaar via Grafana op `http://localhost:3000
 | Outbox pending | `outbox_events_pending` | Events wachten op relay |
 | Retry pogingen | `retry_attempts_total` | Per uitkomst (success/failed/permanently_failed) |
 
-### Dashboard tijdens loadtest (2026-06-25)
+### Dashboard tijdens multi-provider demo (2026-06-25)
 
-Screenshot opgenomen tijdens `scripts/loadtest.ps1 -Scenario load` (20 afspraken, tenant `loadtest-swiftsend`, SwiftSend):
+Screenshot opgenomen na registratie van tenants voor alle vier providers (SwiftSend, SecurePost, LegacyLink, AsyncFlow) en aanmaken van testaafspraken per tenant:
 
-![Grafana beunmrs-perf dashboard tijdens loadtest](grafana-loadtest.png)
+![Grafana beunmrs-perf dashboard — alle 4 providers actief](grafana-multiprovider.png)
 
 **Zichtbare panelen:**
-- **Notificaties/min per provider** — piek ~25/min rond 15:10 (loadtest-burst)
-- **Provider call latency p50/p95/p99** — pieken tot ~1.5–2s (FakeComWorld lokaal + gesimuleerde timeouts)
-- **Foutpercentage 48.4%** — FakeComWorld retourneert opzettelijk 503/504-fouten ter simulatie van provider-uitval; retry-mechanisme vangt dit op
-- **Retry job uitkomsten** — failed/permanently_failed/success zichtbaar over tijd
-- **Outbox events pending: 0** — alle events verwerkt, geen achterstand in de buffer
+
+| Panel | Gemeten waarde | Toelichting |
+|-------|---------------|-------------|
+| Service uptime | 1.19 uur | Service stabiel na koud opstarten |
+| JVM Heap | 1.46% | Lage geheugendruk |
+| Notificaties/min per provider | Pieken zichtbaar voor SwiftSend, AsyncFlow, LegacyLink én SecurePost | Bewijst NFR-3: alle 4 providers actief tegelijkertijd |
+| Provider call latency (p50/p95/p99) | ~0–2s per provider | Aparte latency-lijnen per provider in de legenda |
+| Foutpercentage | 94.7% | Hoog omdat de testpatiënt (Betty Williams) geen telefoonnummer heeft in OpenMRS — `PersonContactService` retourneert leeg → direct `failed`. De providers zélf worden wel aangeroepen en zijn zichtbaar in de latency-meting. |
+| Totaal notificaties verstuurd | 150 | Aangemaakt door poller voor alle 4 provider-tenants |
+| Totaal permanent mislukt | 153 | Verwacht: geen telefoonnummer → 3 retries → `permanently_failed` |
+| Retry job uitkomsten | failed / permanently\_failed / success alle zichtbaar | Retry-mechanisme (FMEA-maatregel) actief aantoonbaar |
+| Pending reminders | 558 | Gecumuleerde reminders van alle demo-tenants |
+| Outbox events pending | 0 | Alle events door RabbitMQ verwerkt — geen achterstand |
+
+**Conclusie multi-provider meting:** het dashboard toont real-time dat alle vier providers (NFR-3) tegelijkertijd actief zijn en individueel worden gemonitord via Grafana (NFR-9a). De per-provider latency-panel onderscheidt AsyncFlow (twee-fasen async), LegacyLink (SOAP), SecurePost (JWT + send) en SwiftSend (REST direct) op latentie.
 
 ---
 
