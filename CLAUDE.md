@@ -74,8 +74,8 @@ Zie @AGENTS.md voor rubric en sprints
 |----|-------------|--------|
 | **D1** | Technische documentatie (`docs/README-beheerder.md`) | ✅ Aanwezig |
 | **D2** | Codebase + opstartinstructies (root `README.md`) | ✅ Bijgewerkt |
-| **D3a** | ADR-logboek | ✅ ADR-001 t/m ADR-010 |
-| **D3b** | C4 diagrammen (L1/L2/L3) + procesvisualisatie | ✅ `docs/C4-diagrammen.md` |
+| **D3a** | ADR-logboek | ✅ ADR-001 t/m ADR-011 |
+| **D3b** | C4 diagrammen (L1/L2/L3) + procesvisualisatie | ✅ `docs/C4-diagrammen/` (.drawio) |
 | **D4a** | Realisatielogboek: ontwikkeltools | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
 | **D4b** | Realisatielogboek: AI-tools + voorbeelden | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
 | **D4c** | Realisatielogboek: commits per teamlid | ⚠️ Tabel aanwezig — bijwerken met `git log` vóór inlevering |
@@ -114,9 +114,9 @@ Zie @AGENTS.md voor rubric en sprints
 
 - [x] ~~**D2 — Root `README.md`**~~ ✅ Bijgewerkt met documentatietabel, traceerbaarheidslinks, projectstructuur
 
-- [x] ~~**D3a — ADR-logboek**~~ ✅ ADR-001 t/m ADR-010 aanwezig in `docs/ADR 1 - 4/`
+- [x] ~~**D3a — ADR-logboek**~~ ✅ ADR-001 t/m ADR-011 aanwezig in `docs/ADR's/`
 
-- [x] ~~**D3b — C4 diagrammen**~~ ✅ `docs/C4-diagrammen.md` met L1/L2/L3 en procesvisualisatie
+- [x] ~~**D3b — C4 diagrammen**~~ ✅ `docs/C4-diagrammen/` (.drawio) met L1/L2/L3 en procesvisualisatie
 
 - [x] ~~**D4 — Realisatielogboek**~~ ✅ `docs/Realisatielogboek/realisatielogboek.md` (D4a/b/c)
   - ⚠️ D4c commits-tabel: bijwerken met `git log`-output vóór inlevering

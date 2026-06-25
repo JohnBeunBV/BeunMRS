@@ -93,7 +93,7 @@ Deze matrix is het antwoord op de vraag: **"Hoe weten jullie dat requirement X b
 
 ## Relatie tot ADRs
 
-Alle ADRs zijn te vinden in `docs/ADR 1 - 4/`. De nummering correspondeert direct:
+Alle ADRs zijn te vinden in `docs/ADR's/`. De nummering correspondeert direct:
 
 | ADR | Behandelt requirements |
 |---|---|
@@ -107,3 +107,4 @@ Alle ADRs zijn te vinden in `docs/ADR 1 - 4/`. De nummering correspondeert direc
 | ADR-008 | NFR-10, NFR-11 |
 | ADR-009 | Teststrategie (meta) |
 | ADR-010 | NFR-9a, NFR-9b |
+| ADR-011 | NFR-2c, NFR-5b (reverse-proxy-topologie — herontwerp) |

@@ -12,6 +12,7 @@ Groep: **Klas B 7** · Inleverdatum: **25 mei 2026 23:59**
 4. [Beroepsproduct rubric (groep)](#beroepsproduct-rubric-groep)
 5. [CGI rubric (individueel)](#cgi-rubric-individueel)
 6. [Presentatierichtlijnen](#presentatierichtlijnen)
+7. [Sprints & deliverables](#sprints--deliverables)
 
 ---
 
@@ -188,3 +189,47 @@ Alle **drie** onderdelen moeten minimaal **55/100** scoren voor een voldoende op
 - Niet alle groepsleden hoeven het woord te nemen
 - Verantwoord dat het beroepsproduct voldoet aan de eisen **en** minimaal de "Voldoende"-kolom van de rubric
 - Alle groepsleden aanwezig op het geplande tijdstip (zie nieuwsberichten voor lokaal en tijdstip)
+
+---
+
+## Sprints & deliverables
+
+De opdracht is opgebouwd in drie sprints. Onderstaande deliverables mappen direct op de documenten in `docs/`.
+
+### Sprint 1 — Architectuur & integratiekeuze
+
+> **Sprintdoel:** "Wij begrijpen de architectuur van OpenMRS en hebben vastgelegd hoe de communicatiemodule wordt aangekoppeld, welke integratiemethode het meest geschikt is, en met welke technologie stack we dat bouwen — onderbouwd met drie ADR's."
+
+| # | Deliverable | Mapt op |
+|---|-------------|---------|
+| 1 | Systeemvisualisatie met integratiepunten OpenMRS | `docs/C4-diagrammen/` (L1) |
+| 2 | **ADR 1** — zelfstandige vs. ingebouwde module (incl. afgevallen alternatieven) | `ADR-001` |
+| 3 | **ADR 2** — technologie stack (taal, framework, queue, opslag, monitoring) | `ADR-002` |
+| 4 | **ADR 3** — integratiemethode (downtime, schaalbaarheid, HL7/FHIR-aansluiting) | `ADR-003` |
+
+### Sprint 2 — Werkende Docker-stack & asynchroniteit
+
+> **Sprintdoel:** "Wij hebben de communicatiemodule werkend opgezet in een Docker-omgeving, en asynchroon verbonden met minimaal één messaging provider — gedocumenteerd met een ADR over messaging en een C4-diagram op level 1 en 2."
+
+| # | Deliverable | Mapt op |
+|---|-------------|---------|
+| 1 | Werkende codebase: `docker compose up` + voorbeeldrequest in README | `README.md` |
+| 2 | Asynchroniteit: lage temporal/behavioral coupling met providers én OpenMRS; uitbreidbare adapterstructuur | provider-`adapter/`, RabbitMQ |
+| 3 | **ADR 4** — queuing-infrastructuur (keuze + inrichting t.b.v. eisen) | `ADR-004` |
+| 4 | C4-diagram **level 1** (systeemcontext) + **level 2** (containers) | `docs/C4-diagrammen/` |
+
+### Sprint 3 — Productiewaardig: resiliency, observability, test & docs
+
+> **Sprintdoel:** "Wij hebben de communicatiemodule productiewaardig gemaakt: bekende faalscenario's zijn geïdentificeerd via een FMEA en aantoonbaar afgedekt, de module is volledig observeerbaar via een real-time dashboard, en de codebase is getest en gedocumenteerd als complete eindoplevering."
+
+| # | Deliverable | Mapt op |
+|---|-------------|---------|
+| 1 | **FMEA** — failure mode, effect, oorzaak, maatregel (severity-score *niet* vereist) | `docs/FMEA/FMEA_Documentatie.md` |
+| 2 | Aantoonbare resiliency: FMEA-maatregelen herkenbaar in code + architectuur | FMEA-koppelingstabel |
+| 3 | Observability dashboard: status verzonden/mislukt, throughput, fouten/circuit breaker | Grafana `beunmrs-perf` |
+| 4 | Performancerapportage: berichten/tijdseenheid, latency, aantoonbare verbetering t.o.v. eerdere meting | `docs/PerformanceRapport/PERFORMANCE-RAPPORT.md` |
+| 5 | C4-diagram **level 3** (componentdiagram notificatieworker) | `docs/C4-diagrammen/` (L3) |
+| 6 | Testrapportage: unit (scheduler, adapter, idempotentie) + geautomatiseerde integratietests | `docs/Tests/testrapport.md` |
+| 7 | Technische documentatie voor beheerders (koppeling, credentials, opstart, voorbeeldrequest) | `docs/README-beheerder.md` |
+
+> **Let op (FMEA):** de opdracht vereist géén severity-score — focus op *failure mode, effect, oorzaak en maatregel*. Onze FMEA bevat W×I-scores als extra onderbouwing; dat is dus boven de eis.
