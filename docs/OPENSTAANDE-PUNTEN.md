@@ -150,13 +150,18 @@ De docent: *"In de presentatie zien we dit ook terug."* De documenten zijn nu go
 - `DB_ENCRYPTION_KEY` heeft lege default (`${DB_ENCRYPTION_KEY:}`) — veilig ✅
 - `SAAS_ADMIN_KEY` heeft default `admin-secret` in `application.yml:37` — bekende valkuil (gedocumenteerd in `CLAUDE.md`), acceptabel voor demo; productie: zet `SAAS_ADMIN_KEY` env var ✅
 
-### D5 🔴 D4c — commit-tabel uit echte `git log`
-Het realisatielogboek heeft nog een placeholder-tabel.
-```powershell
-git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending
-git log --author="<naam>" --pretty=format:"%h %ad %s" --date=short
-```
-Vul echte cijfers in, verwijder de waarschuwing. **Inspanning: 30 min.**
+### D5 ✅ D4c — commit-tabel bijgewerkt
+~~Het realisatielogboek heeft nog een placeholder-tabel.~~ **Opgelost (2026-06-25):** tabel in `docs/Realisatielogboek/realisatielogboek.md` bijgewerkt met echte git-cijfers en placeholder-waarschuwing verwijderd.
+
+| Teamlid | Commits |
+|---|---|
+| Wassim Balouda (Wasssiimm) | 28 |
+| Thijs van de Veen (Dice-cmd) | 16 |
+| Storm Kroonen (S.k2004) | 10 |
+| Nick de Rooij (NickdeRooij) | 4 |
+| **Totaal** | **58** |
+
+> ⚠️ **Vóór inlevering bijwerken:** commit-aantallen opnieuw uitvoeren zodra alle herkansingswerk gecommit is. Commando: `git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending`
 
 ---
 
@@ -224,7 +229,7 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 - [ ] B1/B2/B3 de 3 ⚠️-verificaties afmaken (verdeel: Thijs NFR-4+8, Storm NFR-9a)
 - [ ] A2 "test- en verbeterstappen" sectie in performance-rapport (Storm)
 - [x] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
-- [ ] D5 commit-tabel uit git log (Wassim, 30 min)
+- [x] D5 commit-tabel uit git log (Thijs, 30 min)
 
 **Dag 2 — presentatie + CGI:**
 - [ ] C presentatie-draaiboek met traceerbaarheid + FMEA als hoofdmoot (allen)
