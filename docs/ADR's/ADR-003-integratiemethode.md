@@ -28,10 +28,12 @@ Via welke integratiemethode ontvangt de communicatiemodule afspraakdata vanuit O
 De communicatiemodule leest afspraakgegevens rechtstreeks uit de database van OpenMRS.
 
 **Voordelen**
+
 - Eenvoudig op te zetten
 - Snelle toegang tot data zonder extra API-laag
 
 **Nadelen**
+
 - Sterke afhankelijkheid van de interne databasestructuur van OpenMRS
 - Wijzigingen in het databaseschema kunnen de koppeling breken
 - Slecht schaalbaar bij meerdere OpenMRS-instanties
@@ -45,9 +47,11 @@ De communicatiemodule leest afspraakgegevens rechtstreeks uit de database van Op
 OpenMRS roept bij iedere afspraakwijziging een webhook aan op de communicatiemodule.
 
 **Voordelen**
+
 - Lage latentie — directe verwerking bij elke wijziging
 
 **Nadelen**
+
 - Als de communicatiemodule tijdelijk offline is, gaan events verloren
 - OpenMRS moet het adres van de communicatiemodule kennen — sterke koppeling
 - Slecht schaalbaar naar meerdere instanties zonder aparte configuratie per instantie
@@ -61,6 +65,7 @@ OpenMRS roept bij iedere afspraakwijziging een webhook aan op de communicatiemod
 De communicatiemodule bevraagt periodiek de OpenMRS REST API en plaatst nieuwe of gewijzigde afspraken in RabbitMQ voor asynchrone verwerking.
 
 **Voordelen**
+
 - Betrouwbare verwerking via queueing en retries
 - Werkt zonder aanpassingen aan OpenMRS
 - Goed schaalbaar: meerdere OpenMRS-instanties kunnen naar dezelfde queue-infrastructuur worden gekoppeld
@@ -68,16 +73,17 @@ De communicatiemodule bevraagt periodiek de OpenMRS REST API en plaatst nieuwe o
 - Sliding window vangt zowel nieuwe als gewijzigde afspraken op
 
 **Nadelen**
+
 - Hogere latentie dan directe push (maximaal gelijk aan het poll-interval van 2 minuten)
 - Debugging is lastiger doordat communicatie asynchroon verloopt
 
 **Gedrag bij downtime:**
 
-| Scenario | Gedrag |
-|----------|--------|
-| Communicatiemodule tijdelijk down | RabbitMQ bewaart berichten in duurzame queues; verwerking hervat na herstart |
-| OpenMRS tijdelijk down | Poller logt fout, circuit breaker pauzeert na 5 pogingen; na herstel haalt de poller gemiste periode op via watermark |
-| RabbitMQ tijdelijk down | Outbox-tabel in Postgres behoudt de data; relay-job publiceert zodra de broker bereikbaar is |
+| Scenario                          | Gedrag                                                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Communicatiemodule tijdelijk down | RabbitMQ bewaart berichten in duurzame queues; verwerking hervat na herstart                                          |
+| OpenMRS tijdelijk down            | Poller logt fout, circuit breaker pauzeert na 5 pogingen; na herstel haalt de poller gemiste periode op via watermark |
+| RabbitMQ tijdelijk down           | Outbox-tabel in Postgres behoudt de data; relay-job publiceert zodra de broker bereikbaar is                          |
 
 **Schaalbaarheid:** Meerdere OpenMRS-instanties kunnen worden gekoppeld door voor elke instantie een eigen poller-configuratie te gebruiken. Alle pollers publiceren naar dezelfde RabbitMQ exchange. De consumers verwerken berichten ongeacht de bron, wat multi-tenant SaaS-scenario's ondersteunt.
 
@@ -97,14 +103,43 @@ Oorspronkelijk was de FHIR2 Appointment API (`/ws/fhir2/R4/Appointment`) gepland
 
 ```json
 {
-  "issue": [{
-    "severity": "error",
-    "diagnostics": "HAPI-0302: Unknown resource type 'Appointment'"
-  }]
+  "issue": [
+    {
+      "severity": "error",
+      "diagnostics": "HAPI-0302: Unknown resource type 'Appointment'"
+    }
+  ]
 }
 ```
 
 De integratie maakt daarom gebruik van de OpenMRS REST v1 API (`POST /ws/rest/v1/appointment/search`). Het interne `AppointmentEvent`-model is bewust provider-agnostisch opgezet: als een toekomstige OpenMRS-installatie wel FHIR2 Appointment ondersteunt, kan de poller worden uitgewisseld zonder wijzigingen aan de rest van de module.
+
+---
+
+## OpenMRS-versiecompatibiliteit (NFR-4)
+
+NFR-4 vereist compatibiliteit met OpenMRS 2.7.x. Deze eis wordt structureel geborgd
+door de integratiestrategie in dit ADR:
+
+**Waarom REST v1 compatibel is met 2.7.x**  
+De module gebruikt uitsluitend endpoints uit de `/ws/rest/v1/`-namespace:
+`POST /ws/rest/v1/appointment/search` (hoofdpoller),
+`GET /ws/rest/v1/appointment?lastUpdated={watermark}` (reconciliator) en
+`GET /ws/rest/v1/patient/{uuid}?v=full` (patiëntgegevens).
+Deze endpoints zijn onderdeel van de stabiele publieke REST Web Services module
+en hebben geen breaking changes gehad binnen de gehele 2.x-reeks.
+
+**Beperking van het compatibiliteitsrisico**  
+De poller-laag is uitwisselbaar zonder aanpassingen aan dispatcher, outbox, consumer
+of notificatielogica. Als een specifieke 2.7.x-installatie een afwijkende API-respons
+heeft, wordt alleen de poller aangepast. Dit is ook de reden waarom FHIR2 toekomstklaar
+is: een installatie die wél FHIR2 Appointment ondersteunt, vereist alleen een nieuwe
+poller-implementatie.
+
+**Niet geautomatiseerd getest**  
+Er is geen geautomatiseerde integratietest uitgevoerd tegen een live OpenMRS 2.7.x-instantie.
+Bij productie-onboarding wordt aanbevolen stap 6 uit `docs/Info/postmanrequests.md`
+handmatig te verifiëren (`POST /ws/rest/v1/appointment/search`).
 
 ---
 
