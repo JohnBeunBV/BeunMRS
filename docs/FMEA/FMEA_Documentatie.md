@@ -39,9 +39,9 @@ De risicoscore wordt berekend als: **Waarschijnlijkheid (W) × Impact (I)**. Sco
 
 | # | Foutmodus | ADR | Kernklasse(n) | Bewijstest |
 |---|---|---|---|---|
-| FM-1 | Database verbinding verbroken | ADR-007 | `OutboxService.recordResult()` | `OutboxServiceTest` |
+| FM-1 | Database verbinding verbroken | ADR-007 | `OutboxService.recordResult()` | `OutboxServiceTest` — `recordResult_dbFailsOnce_retriesAndSucceeds`, `recordResult_dbFailsAllRetries_doesNotThrow` |
 | FM-2 | RabbitMQ onbereikbaar | ADR-004, ADR-007 | `OutboxRelayJob.relay()`, `topology.json` | `OutboxServiceTest`, loadtest |
-| FM-3 | Consumer crasht vóór verwerking | ADR-004 | `AppointmentEventConsumer`, `seen_appointments` unique index | `AppointmentEventConsumerTest` |
+| FM-3 | Consumer crasht vóór verwerking | ADR-004 | `AppointmentEventConsumer`, `seen_appointments` PRIMARY KEY | `EndToEndNotificationFlowTest` (echte PostgreSQL + schema-constraints) |
 | FM-4 | Bericht verlopen (TTL) | ADR-004 | `topology.json` (DLX), `AppointmentReconciler` | Handmatig (`circuitbreaker-test.ps1`) |
 | FM-5 | SwiftSend onbereikbaar/rate-limit | ADR-006, ADR-007 | `SwiftSendProvider`, `FailedNotificationRetryJob` | `SwiftSendProviderTest` |
 | FM-6 | SecurePost JWT verlopen | ADR-006 | `SecurePostProvider.getValidToken()` | `SecurePostProviderTest` |
@@ -49,7 +49,7 @@ De risicoscore wordt berekend als: **Waarschijnlijkheid (W) × Impact (I)**. Sco
 | FM-8 | AsyncFlow geen eindstatus | ADR-006 | `AsyncFlowProvider.pollPendingCommands()`, `async_flow_commands` | `AsyncFlowProviderTest` |
 | FM-9 | Crash na DB-write, vóór publish | ADR-007 | `OutboxService.writePending()`, `OutboxRelayJob.relay()` | `OutboxServiceTest` |
 | FM-10 | Tijdzone-fout | ADR-005 | `ReminderScheduler`, `MessageHelper.formatTime()` | `MessageHelperTest`, `ReminderSchedulerTest` |
-| FM-11 | Polling reconciler dubbele events | ADR-003 | `AppointmentReconciler.alreadyProcessed()`, `sync_watermarks` | `AppointmentEventConsumerTest` |
+| FM-11 | Polling reconciler dubbele events | ADR-003 | `AppointmentReconciler.alreadyProcessed()`, `sync_watermarks` | `EndToEndNotificationFlowTest` (echte PostgreSQL + `seen_appointments` PRIMARY KEY) |
 
 ---
 
@@ -186,7 +186,7 @@ De risicoscore wordt berekend als: **Waarschijnlijkheid (W) × Impact (I)**. Sco
 
 **Architectuurkoppeling:** ADR-004 (acknowledge-mode auto + idempotente verwerking)  
 **Codekoppeling:** `application.yml` (acknowledge-mode: auto) · `seen_appointments` unique index · `AppointmentReconciler.alreadyProcessed()`  
-**Testkoppeling:** `AppointmentEventConsumerTest` — scenario: herbezorgd bericht leidt niet tot dubbele dispatch
+**Testkoppeling:** Idempotentie wordt op databaseniveau afgedwongen door de `seen_appointments` PRIMARY KEY `(appointment_uuid, tenant_id)` in `00_schema.sql`. De `AppointmentEventConsumerTest` test de event-routing per eventtype; de idempotentie-garantie wordt bewezen via de `EndToEndNotificationFlowTest` die werkt tegen een echte PostgreSQL-instantie met het productieschema inclusief alle CHECK-constraints en primary keys.
 
 ---
 
@@ -512,7 +512,7 @@ De risicoscore wordt berekend als: **Waarschijnlijkheid (W) × Impact (I)**. Sco
 
 **Architectuurkoppeling:** ADR-003 (polling + watermark-strategie voor deduplicatie)  
 **Codekoppeling:** `AppointmentReconciler.alreadyProcessed()` · `AppointmentReconciler.advanceWatermark()` · `idx_sched_notif_pending_unique` unique index  
-**Testkoppeling:** `AppointmentEventConsumerTest` — scenario: dubbel event triggert geen dubbele reminder
+**Testkoppeling:** Deduplicatie wordt op databaseniveau afgedwongen door de `seen_appointments` PRIMARY KEY `(appointment_uuid, tenant_id)` en de `idx_sched_notif_pending_unique` index in `00_schema.sql`. Bewijs via de `EndToEndNotificationFlowTest` die werkt tegen een echte PostgreSQL-instantie met het productieschema inclusief alle constraints.
 
 ---
 

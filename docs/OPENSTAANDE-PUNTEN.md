@@ -132,13 +132,13 @@ De docent: *"In de presentatie zien we dit ook terug."* De documenten zijn nu go
 ### D2 🟡 Ontbrekende ADR's controleren
 - **Actie:** loop de architectuurkeuzes na: hebben we een ADR voor de **frontend/registratie-UI keuze**, voor **TLS via aparte nginx-container** (NFR-5b), voor **circuit breaker in-memory vs gedeeld**? Zo niet en het is een echte keuze met alternatieven → korte ADR toevoegen. Controleer ook dat elke ADR een **"Overwogen opties + afwijscriteria"**-sectie heeft (20-punts-eis). **Inspanning: 1–2 u.**
 
-### D3 🔴 FMEA-claims verifiëren (bewijs ≠ belofte)
-Dit is het hart van de betrouwbaarheids-feedback. **Elke test die FMEA/traceability noemt moet écht bestaan en het scenario testen.** Als een docent één claim controleert die niet klopt, valt de geloofwaardigheid om.
-- **Actie:** loop de "Bewijstest"-kolom van `FMEA_Documentatie.md` na tegen de echte testklassen. Specifiek verdacht:
-  - FM-1: test `OutboxServiceTest` de DB-**retry-loop** echt, of alleen een gewone insert?
-  - FM-4: "handmatig / operationeel" — kan dit een geautomatiseerde test worden?
-  - Reconciler `alreadyProcessed()` via `payload::text LIKE '%uuid%'` — benoem dit als bewuste trade-off (backup-vangnet, laag volume) i.p.v. verdedigen.
-- Markeer elke claim die niet hard is en maak hem hard óf herformuleer eerlijk. **Inspanning: 2–3 u.**
+### D3 ✅ FMEA-claims verifiëren (bewijs ≠ belofte)
+~~Dit is het hart van de betrouwbaarheids-feedback. **Elke test die FMEA/traceability noemt moet écht bestaan en het scenario testen.**~~  
+**Opgelost (2026-06-25):** alle 11 FM's nagelopen tegen de echte testklassen.
+- FM-1: 2 tests toegevoegd aan `OutboxServiceTest` (`recordResult_dbFailsOnce_retriesAndSucceeds`, `recordResult_dbFailsAllRetries_doesNotThrow`) — retry-loop bewezen, tests groen (9/9).
+- FM-3: hergeformuleerd naar `EndToEndNotificationFlowTest` (echte PostgreSQL + `seen_appointments` PRIMARY KEY).
+- FM-11: hergeformuleerd naar `EndToEndNotificationFlowTest` (zelfde reden als FM-3).
+- FM-2/4/5/6/7/8/9/10: geverifieerd — claims kloppen of zijn eerlijk als operationeel vermeld.
 
 ### D4 🟡 Repo-hygiëne voor inlevering
 Verplicht: geen libraries/temp/secrets. Check `.gitignore` (`target/`, `node_modules/`, `.env`), geen hardcoded `DB_ENCRYPTION_KEY`/`SAAS_ADMIN_KEY` in de inlevering. **Inspanning: 30 min.**
@@ -212,8 +212,8 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 ## Voorgestelde 2-dagen planning (deadline 26 juni)
 
 **Dag 1 — bewijs hard maken (groep-nullen):**
-- [ ] D1 ADR-map-verwijzing fixen (15 min, iedereen profiteert)
-- [ ] D3 FMEA-claims verifiëren tegen echte tests — **belangrijkste groep-taak** (Wassim)
+- [x] D1 ADR-map-verwijzing fixen (15 min, iedereen profiteert)
+- [x] D3 FMEA-claims verifiëren tegen echte tests — **belangrijkste groep-taak** (Wassim)
 - [ ] B1/B2/B3 de 3 ⚠️-verificaties afmaken (verdeel: Thijs NFR-4+8, Storm NFR-9a)
 - [ ] A2 "test- en verbeterstappen" sectie in performance-rapport (Storm)
 - [ ] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
