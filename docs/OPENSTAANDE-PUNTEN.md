@@ -129,8 +129,11 @@ De docent: *"In de presentatie zien we dit ook terug."* De documenten zijn nu go
 ### D1 ✅ ADR-map-verwijzing gecorrigeerd (consistentie-bug)
 ~~De traceerbaarheidsmatrix en `CLAUDE.md` verwezen naar `docs/ADR 1 - 4/`, maar de map heet `docs/ADR's/`.~~ **Opgelost (2026-06-25):** alle verwijzingen in `README.md`, `CLAUDE.md` en de traceerbaarheidsmatrix wijzen nu naar `docs/ADR's/`, en de ADR-telling is bijgewerkt naar ADR-001 t/m ADR-011.
 
-### D2 🟡 Ontbrekende ADR's controleren
-- **Actie:** loop de architectuurkeuzes na: hebben we een ADR voor de **frontend/registratie-UI keuze**, voor **TLS via aparte nginx-container** (NFR-5b), voor **circuit breaker in-memory vs gedeeld**? Zo niet en het is een echte keuze met alternatieven → korte ADR toevoegen. Controleer ook dat elke ADR een **"Overwogen opties + afwijscriteria"**-sectie heeft (20-punts-eis). **Inspanning: 1–2 u.**
+### D2 ✅ ADR-volledigheid gecheckt
+~~Controleer ook dat elke ADR een "Overwogen opties + afwijscriteria"-sectie heeft (20-punts-eis).~~  
+**Opgelost (2026-06-25):** alle 11 ADRs nagelopen op alternatieven + afwijscriteria.
+- ADR-001/003/004/005/006/007/008/009/010/011: hadden al volledige opties + afwijscriteria.
+- **ADR-002 herschreven:** per technologielaag (backend, queue, database) nu expliciete Optie 1/2/3-structuur met voordelen, nadelen en "Afgewezen omdat"-conclusie. TLS en circuit breaker zijn gedekt in ADR-011 resp. ADR-003/007.
 
 ### D3 ✅ FMEA-claims verifiëren (bewijs ≠ belofte)
 ~~Dit is het hart van de betrouwbaarheids-feedback. **Elke test die FMEA/traceability noemt moet écht bestaan en het scenario testen.**~~  
@@ -216,7 +219,7 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 - [x] D3 FMEA-claims verifiëren tegen echte tests — **belangrijkste groep-taak** (Wassim)
 - [ ] B1/B2/B3 de 3 ⚠️-verificaties afmaken (verdeel: Thijs NFR-4+8, Storm NFR-9a)
 - [ ] A2 "test- en verbeterstappen" sectie in performance-rapport (Storm)
-- [ ] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
+- [x] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
 - [ ] D5 commit-tabel uit git log (Wassim, 30 min)
 
 **Dag 2 — presentatie + CGI:**
