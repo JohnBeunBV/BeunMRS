@@ -72,12 +72,15 @@ public class ReminderDispatchJob {
         int sent   = 0;
         int errors = 0;
 
+        Timer batchTimer = Timer.builder("reminder_batch_duration_seconds")
+                .publishPercentileHistogram()
+                .register(meterRegistry);
         Timer.Sample batchSample = Timer.start(meterRegistry);
         for (Map<String, Object> row : due) {
             boolean ok = processReminder(row);
             if (ok) sent++; else errors++;
         }
-        batchSample.stop(meterRegistry.timer("reminder_batch_duration_seconds"));
+        batchSample.stop(batchTimer);
 
         log.info("[Reminder] Dispatch klaar — verstuurd: {}, fouten: {}", sent, errors);
     }
