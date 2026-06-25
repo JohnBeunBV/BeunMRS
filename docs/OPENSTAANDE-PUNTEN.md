@@ -120,9 +120,10 @@ bijgewerkt naar ✅ met verwijzing naar ADR-003 § OpenMRS-versiecompatibiliteit
 - Em dash (U+2014, 3-byte) overleeft de OpenMRS-grens intact ✅
 - Arabisch/Chinees wordt door de OpenMRS REST-API gecorrumpeerd naar `?` (MySQL-beperking in testomgeving) — dit is vóór onze module; onze stack heeft geen eigen encoding-verlies ⚠️
 
-### B3 🟡 NFR-9a — Grafana dashboard-bewijs
+### B3 ✅ NFR-9a — Grafana dashboard-bewijs
+**Opgelost (2026-06-25):** `scripts/loadtest.ps1 -Scenario load` gedraaid (20 afspraken, SwiftSend), screenshot opgeslagen als `docs/PerformanceRapport/grafana-loadtest.png`, beschreven in `PERFORMANCE-RAPPORT.md` §9.
 
-Draai `scripts\loadtest.ps1 -Scenario stress`, screenshot dashboard (messages/min, errors, retries, per-provider latency), toevoegen aan `docs/PerformanceRapport/`. **Inspanning: ~1 u.**
+Zichtbaar op het screenshot: throughput-piek ~25/min, provider latency p50/p95/p99, foutpercentage 48.4% (FakeComWorld-simulatie), retry job uitkomsten, outbox pending = 0.
 
 ---
 
@@ -259,7 +260,9 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 
 - [x] D1 ADR-map-verwijzing fixen (15 min, iedereen profiteert)
 - [x] D3 FMEA-claims verifiëren tegen echte tests — **belangrijkste groep-taak** (Wassim)
-- [ ] B1/B2/B3 de 3 ⚠️-verificaties afmaken (verdeel: Thijs NFR-4+8, Storm NFR-9a)
+- [x] B2 NFR-8 UTF-8 testbericht (Thijs)
+- [x] B3 NFR-9a Grafana screenshot (Thijs)
+- [ ] B1 NFR-4 OpenMRS 2.7.x motivatienoot (iemand anders)
 - [ ] A2 "test- en verbeterstappen" sectie in performance-rapport (Storm)
 - [x] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
 - [x] D5 commit-tabel uit git log (Thijs, 30 min)
