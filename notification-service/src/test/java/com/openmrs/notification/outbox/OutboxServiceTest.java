@@ -14,6 +14,8 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.springframework.dao.DataAccessResourceFailureException;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -125,6 +127,37 @@ class OutboxServiceTest {
                 .contains("Polikliniek Noord")
                 .contains("Nuchter komen")
                 .contains("Europe/Amsterdam");
+    }
+
+    @Test
+    void recordResult_dbFailsOnce_retriesAndSucceeds() {
+        UUID tenantId = UUID.randomUUID();
+        AppointmentEvent event = event(tenantId);
+
+        when(jdbc.update(anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new DataAccessResourceFailureException("DB tijdelijk neer"))
+                .thenReturn(1);
+
+        assertThatCode(() -> outboxService.recordResult(event, "SwiftSend", NotificationResult.ok("x")))
+                .doesNotThrowAnyException();
+
+        verify(jdbc, times(2)).update(contains("notification_log"),
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void recordResult_dbFailsAllRetries_doesNotThrow() {
+        UUID tenantId = UUID.randomUUID();
+        AppointmentEvent event = event(tenantId);
+
+        when(jdbc.update(anyString(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new DataAccessResourceFailureException("DB neer"));
+
+        assertThatCode(() -> outboxService.recordResult(event, "SwiftSend", NotificationResult.ok("x")))
+                .doesNotThrowAnyException();
+
+        verify(jdbc, times(3)).update(contains("notification_log"),
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     // ── markPublished ─────────────────────────────────────────────────────────
