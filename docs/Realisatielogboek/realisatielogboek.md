@@ -58,29 +58,15 @@
 
 ## D4c — Commits per teamlid
 
-Onderstaande tabel is gegenereerd op basis van `git log --author="<naam>" --oneline`.
+Gegenereerd op 2026-06-25 via `git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending`.
 
-> **Let op:** voer `git log --format="%an" | sort | uniq -c | sort -rn` uit voor een actueel overzicht.
-
-| Teamlid | Hoofdbijdragen |
-|---|---|
-| Storm Kroonen | Architectuurontwerp, multi-tenant SaaS kern (`TenantContext`, `TenantService`, `TenantApiKeyFilter`), security hardening (`GlobalExceptionHandler`, AES-256), ADRs |
-| Wassim Balouda | RabbitMQ topologie en consumer (`AppointmentEventConsumer`), `OutboxRelayJob`, `FailedNotificationRetryJob`, FMEA-documentatie |
-| Nick de Rooij | Provider adapters (SwiftSend, LegacyLink, SecurePost, AsyncFlow), `NotificationDispatcher`, `NotificationProviderContractTest` |
-| Thijs van de Veen | OpenMRS poller (`OpenMrsAppointmentPoller`, `AppointmentReconciler`), `ReminderScheduler`, `ReminderDispatchJob`, `DataRetentionJob`, testrapport |
-
-### Git-commando's voor verificatie
-
-```powershell
-# Commits per auteur
-git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending
-
-# Commits van specifiek teamlid
-git log --author="Storm" --oneline | Measure-Object
-
-# Gedetailleerd logboek per teamlid
-git log --author="Wassim" --pretty=format:"%h %ad %s" --date=short
-```
+| Teamlid | Git-gebruikersnaam | Commits | Hoofdbijdragen |
+|---|---|---|---|
+| Wassim Balouda | Wasssiimm | 28 | C4-diagrammen, README, PR-beheer, FMEA-documentatie, RabbitMQ topologie |
+| Thijs van de Veen | Dice-cmd | 16 | OpenMRS poller (`OpenMrsAppointmentPoller`, `AppointmentReconciler`), `ReminderScheduler`, `ReminderDispatchJob`, `DataRetentionJob`, testrapport, herkansingswerk (FMEA-claims, ADR-002, ADR-011, repo-hygiëne) |
+| Storm Kroonen | S.k2004 | 10 | Architectuurontwerp, multi-tenant SaaS kern (`TenantContext`, `TenantService`, `TenantApiKeyFilter`), security hardening (`GlobalExceptionHandler`, AES-256), ADRs, Docker Compose |
+| Nick de Rooij | NickdeRooij | 4 | Provider adapters (SwiftSend, LegacyLink, SecurePost, AsyncFlow), `NotificationDispatcher`, `NotificationProviderContractTest` |
+| **Totaal** | | **58** | |
 
 ---
 
