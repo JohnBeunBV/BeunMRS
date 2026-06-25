@@ -255,8 +255,8 @@ BeunMRS/
 │   ├── promtail/           # Log collector configuratie
 │   └── grafana/            # Dashboards + datasource provisioning
 └── docs/
-    ├── ADR 1 - 4/          # Architectuurbeslissingen (ADR-001 t/m ADR-010)
-    ├── C4-diagrammen.md    # C4 L1/L2/L3 diagrammen + procesvisualisatie
+    ├── ADR's/              # Architectuurbeslissingen (ADR-001 t/m ADR-011)
+    ├── C4-diagrammen/      # C4 L1/L2/L3 (.drawio) + procesvisualisatie
     ├── FMEA/               # Failure Mode Effect Analysis (11 modes + risicomatrix)
     ├── Traceerbaarheid/    # Traceerbaarheidsmatrix: req → ADR → code → test
     ├── Realisatielogboek/  # D4a/b/c: tools, AI-gebruik, commits per teamlid
@@ -286,8 +286,8 @@ BeunMRS/
 | Document | Inhoud |
 |---|---|
 | [Traceerbaarheidsmatrix](docs/Traceerbaarheid/traceerbaarheidsmatrix.md) | Koppeling: elke requirement → ADR → implementatieklasse → test |
-| [C4-diagrammen](docs/C4-diagrammen.md) | Systeemcontext (L1), Containers (L2), Componenten notification-svc (L3) |
-| [ADR-001 t/m ADR-010](docs/ADR%201%20-%204/) | Alle architectuurbeslissingen met alternatieven en onderbouwing |
+| [C4-diagrammen](docs/C4-diagrammen/) | Systeemcontext (L1), Containers (L2), Componenten notification-svc (L3) — `.drawio` |
+| [ADR-001 t/m ADR-011](docs/ADR's/) | Alle architectuurbeslissingen met alternatieven en onderbouwing |
 | [FMEA](docs/FMEA/FMEA_Documentatie.md) | 11 failure modes met risicomatrix, ADR-koppeling, code en tests |
 | [Testrapport](docs/Tests/testrapport.md) | 109 tests: unit/security/contract/integratie + requirement-mapping |
 | [Beheerdershandleiding](docs/README-beheerder.md) | Installatie, tenant-configuratie, productie-TLS, monitoring |

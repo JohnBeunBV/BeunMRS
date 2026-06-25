@@ -1,0 +1,254 @@
+<mxfile host="65bd71144e">
+    <diagram name="C4 - Level 3 - Component" id="c4-level3-component">
+        <mxGraphModel dx="2036" dy="542" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="C4 Model - Level 3: Componenten&lt;br&gt;Container: notification-svc (Spring Boot 3.2 / Java 21)" style="text;html=1;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="15" width="1420" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="boundary" value="notification-svc  [Container: Spring Boot 3.2 / Java 21]" style="rounded=1;arcSize=1;dashed=1;dashPattern=8 8;strokeColor=#2E6295;fillColor=none;verticalAlign=top;align=left;fontStyle=1;fontSize=14;fontColor=#2E6295;spacingLeft=12;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="158" y="80" width="1322" height="860" as="geometry"/>
+                </mxCell>
+                <mxCell id="grpApi" value="API- &amp; tenant-laag" style="rounded=1;arcSize=2;dashed=1;dashPattern=6 6;strokeColor=#9CC3E6;fillColor=#F4F9FD;verticalAlign=top;align=left;fontStyle=2;fontSize=11;fontColor=light-dark(#404040, #ededed);spacingLeft=8;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="104" width="1285" height="234" as="geometry"/>
+                </mxCell>
+                <mxCell id="grpSched" value="Scheduling-jobs" style="rounded=1;arcSize=2;dashed=1;dashPattern=6 6;strokeColor=#9CC3E6;fillColor=#F4F9FD;verticalAlign=top;align=left;fontStyle=2;fontSize=11;fontColor=#5D82A8;spacingLeft=8;spacingTop=4;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="711" width="610" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="regCtrl" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;TenantRegistrationController&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[tenant] POST /api/register&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="449" y="274" width="192" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="adminCtrl" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;TenantAdminController&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[tenant] admin-API&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="142" y="136" width="150" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#828282;rounded=0;jumpStyle=arc;jumpSize=14;" edge="1" parent="1" source="apiFilter" target="tenantCtx">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="zet tenant" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#404040;" vertex="1" connectable="0" parent="6">
+                    <mxGeometry x="-0.2417" y="1" relative="1" as="geometry">
+                        <mxPoint x="-25" y="-1" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="apiFilter" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;TenantApiKeyFilter&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[tenant] auth (X-API-Key)&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="878" y="244" width="150" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="exHandler" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;GlobalExceptionHandler&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[config] generieke fouten&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="142" y="274" width="150" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="tenantSvc" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;TenantService&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[tenant] CRUD + hash-lookup&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1108" y="244" width="150" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="tenantCtx" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;TenantContext&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[tenant] ThreadLocal&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="741" y="184" width="106" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="aes" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;AesEncryptionService&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[security] AES-256-GCM&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1236" y="162" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="poller" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;OpenMrsAppointmentPoller&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[poller] REST v1, 2 min&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="391" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="reconciler" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;AppointmentReconciler&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[reconciler] fallback, 5 min&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="481" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="personSvc" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;PersonContactService&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[service] telefoon ophalen&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="571" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="outboxSvc" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;OutboxService&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[outbox] persist-before-publish&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="540" y="391" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="outboxRelay" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;OutboxRelayJob&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[outbox] relay 30s&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="540" y="481" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="consumer" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;AppointmentEventConsumer&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[consumer] RabbitMQ-listener&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="760" y="391" width="170" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="dispatcher" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;NotificationDispatcher&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[service] provider-routing&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="760" y="541" width="170" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="providerIf" value="&lt;font color=&quot;#EAF1F8&quot;&gt;&lt;i&gt;«interface»&lt;/i&gt;&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;NotificationProvider&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[adapter]&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4A86BD;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="970" y="541" width="160" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="swift" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;SwiftSendProvider&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;REST, X-API-KEY&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1190" y="451" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="secure" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;SecurePostProvider&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;JWT (token-endpoint)&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1190" y="511" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="legacy" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;LegacyLinkProvider&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;SOAP, Basic Auth&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1190" y="571" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="async" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;AsyncFlowProvider&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;async REST, poll status&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1190" y="631" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="remScheduler" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;ReminderScheduler&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[scheduler] 24h + 1h&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="751" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="remDispatch" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;ReminderDispatchJob&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[scheduler] 60s&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="751" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="retryJob" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;FailedNotificationRetryJob&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[scheduler] backoff 5→15 min&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="831" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="retentionJob" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;DataRetentionJob&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[scheduler] dagelijks 02:00&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="831" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="msgHelper" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;MessageHelper&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[util] opmaak, tijdzone, PII-mask&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="700" y="751" width="190" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="restFactory" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;RestTemplateFactory · AppConfig · MetricsGauges&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#EAF1F8&quot; style=&quot;font-size:9px&quot;&gt;[config] per-tenant RestTemplate, beans, metrics&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3E7CB1;strokeColor=#2A5C86;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="700" y="831" width="190" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="db" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;notification-db&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#ffffff&quot;&gt;[Container: PostgreSQL]&lt;/font&gt;&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#2E6CA8;strokeColor=#1E4D7B;fontColor=#ffffff;boundedLbl=1;align=center;verticalAlign=middle;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="980" y="711" width="160" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="rabbit" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;rabbitmq&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#ffffff&quot;&gt;[Container]&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E6CA8;strokeColor=#1E4D7B;fontColor=#ffffff;align=center;arcSize=8;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="980" y="861" width="160" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="ext_openmrs" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;OpenMRS (O3)&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#ffffff&quot;&gt;[Extern systeem]&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#736782;strokeColor=#544E61;fontColor=#ffffff;align=center;arcSize=10;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="-27" y="458" width="160" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="ext_providers" value="&lt;font color=&quot;#ffffff&quot;&gt;&lt;b&gt;Messaging providers&lt;/b&gt;&lt;/font&gt;&lt;div&gt;&lt;font color=&quot;#ffffff&quot;&gt;[FakeComWorld]&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#736782;strokeColor=#544E61;fontColor=#ffffff;align=center;arcSize=10;metaEdit=1;" parent="1" vertex="1">
+                    <mxGeometry x="1200" y="721" width="170" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="c1" value="valideert API-key" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="apiFilter" target="tenantSvc" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1089" y="274"/>
+                            <mxPoint x="1089" y="274"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="c3" value="registreert tenant" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=0.999;exitY=0.809;exitDx=0;exitDy=0;entryX=0.165;entryY=1.033;entryDx=0;entryDy=0;entryPerimeter=0;exitPerimeter=0;" parent="1" source="regCtrl" target="tenantSvc" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1020" y="323"/>
+                            <mxPoint x="1133" y="323"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="c4" value="versleutelt credentials" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="tenantSvc" target="aes" edge="1">
+                    <mxGeometry x="0.1405" y="-14" relative="1" as="geometry">
+                        <mxPoint x="-13" y="14" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="c5" value="tenants" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="tenantSvc" target="db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c6" value="pollt afspraken [REST v1]" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="poller" target="ext_openmrs" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c7" value="fallback poll" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="reconciler" target="ext_openmrs" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c8" value="haalt telefoon op" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="personSvc" target="ext_openmrs" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c9" value="writePending()" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="poller" target="outboxSvc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c10" value="outbox_events / notification_log" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="outboxSvc" target="db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c11" value="leest ongepubliceerd" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="outboxRelay" target="db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c12" value="publiceert [AMQP]" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="outboxRelay" target="rabbit" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c13" value="consumeert [AMQP]" style="endArrow=blockThin;dashed=1;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#9A8FA8;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="rabbit" target="consumer" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c14" value="dispatcht" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="consumer" target="dispatcher" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c15" value="plant reminders" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="consumer" target="remScheduler" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c16" value="selecteert via tenant.providerName" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="dispatcher" target="providerIf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c17" value="recordResult()" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="dispatcher" target="outboxSvc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c18" value="bouwt bericht (tijd/locatie/PII-mask)" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="providerIf" target="msgHelper" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="i1" style="endArrow=block;endFill=0;dashed=1;html=1;strokeColor=#5D82A8;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="swift" target="providerIf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="i2" style="endArrow=block;endFill=0;dashed=1;html=1;strokeColor=#5D82A8;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="secure" target="providerIf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="i3" style="endArrow=block;endFill=0;dashed=1;html=1;strokeColor=#5D82A8;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="legacy" target="providerIf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="i4" style="endArrow=block;endFill=0;dashed=1;html=1;strokeColor=#5D82A8;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="async" target="providerIf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c19" value="verstuurt SMS [REST/SOAP]" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="swift" target="ext_providers" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c20" value="" style="endArrow=blockThin;html=1;fontSize=9;strokeColor=#828282;strokeWidth=1;endFill=1;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="async" target="ext_providers" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c21" value="scheduled_notifications" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="remScheduler" target="db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c22" value="leest vervallen reminders" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="remDispatch" target="db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c23" value="dispatcht vervallen" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="remDispatch" target="dispatcher" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c24" value="herprobeert direct via provider" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="retryJob" target="providerIf" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c25" value="purge PII/audit" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" parent="1" source="retentionJob" target="db" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c26" value="beheert tenants (list / deactivate)" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="adminCtrl" target="tenantSvc">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c27" value="vangt excepties af (alle controllers)" style="endArrow=blockThin;dashed=1;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#9A8FA8;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="exHandler" target="regCtrl">
+                    <mxGeometry x="-0.0064" y="12" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="c28" value="" style="endArrow=blockThin;dashed=1;html=1;fontSize=9;strokeColor=#9A8FA8;strokeWidth=1;endFill=1;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="exHandler" target="adminCtrl">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c29" value="publiceert direct [AMQP]" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="poller" target="rabbit">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c30" value="dispatcht direct (fallback)" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="reconciler" target="dispatcher">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c31" value="watermark + dedup" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="reconciler" target="db">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c32" value="leest/markeert notification_log" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="retryJob" target="db">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c33" value="ontsleutelt credentials" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="dispatcher" target="tenantSvc">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c34" value="verrijkt telefoon" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="poller" target="personSvc">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c35" value="verrijkt telefoon (live)" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="retryJob" target="personSvc">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c37" value="duplicate guard (seen_appointments)" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="poller" target="db">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="c36" value="verrijkt telefoon" style="endArrow=blockThin;html=1;fontSize=9;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;jumpStyle=arc;jumpSize=14;rounded=0;edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="reconciler" target="personSvc">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend" value="Component (blauw) · «interface» (lichter blauw) · Container / extern systeem (donkerblauw/grijs) · gestreepte pijl = async/realisatie. TenantService/TenantContext worden door bijna elk component gebruikt voor tenant-resolutie — niet elke lookup is getekend (leesbaarheid)." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;fontColor=#666666;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="955" width="1300" height="20" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
