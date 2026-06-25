@@ -143,8 +143,12 @@ De docent: *"In de presentatie zien we dit ook terug."* De documenten zijn nu go
 - FM-11: hergeformuleerd naar `EndToEndNotificationFlowTest` (zelfde reden als FM-3).
 - FM-2/4/5/6/7/8/9/10: geverifieerd — claims kloppen of zijn eerlijk als operationeel vermeld.
 
-### D4 🟡 Repo-hygiëne voor inlevering
-Verplicht: geen libraries/temp/secrets. Check `.gitignore` (`target/`, `node_modules/`, `.env`), geen hardcoded `DB_ENCRYPTION_KEY`/`SAAS_ADMIN_KEY` in de inlevering. **Inspanning: 30 min.**
+### D4 ✅ Repo-hygiëne gecheckt
+~~Verplicht: geen libraries/temp/secrets.~~ **Opgelost (2026-06-25):** alle checks groen.
+- `.gitignore` dekt `**/target/`, `node_modules/`, `.env` ✅
+- `git ls-files` bevat geen `target/`, `node_modules/`, `.env` — alleen `.env.example` gecommit ✅
+- `DB_ENCRYPTION_KEY` heeft lege default (`${DB_ENCRYPTION_KEY:}`) — veilig ✅
+- `SAAS_ADMIN_KEY` heeft default `admin-secret` in `application.yml:37` — bekende valkuil (gedocumenteerd in `CLAUDE.md`), acceptabel voor demo; productie: zet `SAAS_ADMIN_KEY` env var ✅
 
 ### D5 🔴 D4c — commit-tabel uit echte `git log`
 Het realisatielogboek heeft nog een placeholder-tabel.
@@ -225,7 +229,7 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 **Dag 2 — presentatie + CGI:**
 - [ ] C presentatie-draaiboek met traceerbaarheid + FMEA als hoofdmoot (allen)
 - [ ] A1 één requirement live end-to-end uitwerken voor demo (allen)
-- [ ] Repo-hygiëne D4 (Wassim)
+- [x] Repo-hygiëne D4 (Wassim)
 - [ ] **Ieder individueel: Deel E doorwerken en hardop oefenen** — ADR-005 (multi-tenant), ADR-006 (provider-uitbreiding), testpiramide + FMEA-koppeling. Oefen met elkaar als examinator.
 
 ---
@@ -241,4 +245,4 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 
 ---
 
-_Laatst bijgewerkt: 2026-06-24. Werk bij naarmate punten worden afgerond._
+_Laatst bijgewerkt: 2026-06-25. Werk bij naarmate punten worden afgerond._
