@@ -183,6 +183,19 @@ Alle bovenstaande metrics zijn beschikbaar via Grafana op `http://localhost:3000
 | Outbox pending | `outbox_events_pending` | Events wachten op relay |
 | Retry pogingen | `retry_attempts_total` | Per uitkomst (success/failed/permanently_failed) |
 
+### Dashboard tijdens loadtest (2026-06-25)
+
+Screenshot opgenomen tijdens `scripts/loadtest.ps1 -Scenario load` (20 afspraken, tenant `loadtest-swiftsend`, SwiftSend):
+
+![Grafana beunmrs-perf dashboard tijdens loadtest](grafana-loadtest.png)
+
+**Zichtbare panelen:**
+- **Notificaties/min per provider** — piek ~25/min rond 15:10 (loadtest-burst)
+- **Provider call latency p50/p95/p99** — pieken tot ~1.5–2s (FakeComWorld lokaal + gesimuleerde timeouts)
+- **Foutpercentage 48.4%** — FakeComWorld retourneert opzettelijk 503/504-fouten ter simulatie van provider-uitval; retry-mechanisme vangt dit op
+- **Retry job uitkomsten** — failed/permanently_failed/success zichtbaar over tijd
+- **Outbox events pending: 0** — alle events verwerkt, geen achterstand in de buffer
+
 ---
 
 ## 10. Conclusie
