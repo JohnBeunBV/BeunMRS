@@ -100,8 +100,14 @@ Deze staan als ⚠️ in de traceerbaarheidsmatrix. Afmaken = "23/23 aantoonbaar
 ### B1 🟡 NFR-4 — OpenMRS 2.7.x
 Zie [D2](#d2--ontbrekende-adrs-controleren)/onderbouwing. Snelste route: korte motivatie-notitie dat we uitsluitend `/ws/rest/v1/`-endpoints gebruiken (stabiel sinds 2.x) en dat de poller-laag uitwisselbaar is (ADR-003). Eventueel ADR-011. **Inspanning: ~1 u.**
 
-### B2 🟡 NFR-8 — UTF-8 testbericht
-Maak een afspraak met Arabische/Chinese `comments`, volg door de stack, screenshot van intacte tekst in `notification_log` + provider-payload. Leg vast in README-beheerder + `docs/Tests/`. **Inspanning: ~1 u.**
+### B2 ✅ NFR-8 — UTF-8 testbericht
+**Opgelost (2026-06-25):** afspraak aangemaakt met Arabische + Chinese tekst (`comments: "يرجى الحضور صائمًا — 请空腹前来。带上您的护照。"`), eind-tot-eind uitgevoerd en gedocumenteerd in `docs/Tests/testrapport.md` §3.17.
+
+**Bevindingen:**
+- PostgreSQL slaat UTF-8 correct op: Arabisch 18 chars → 34 bytes, Chinees 7 chars → 21 bytes ✅
+- Spring Boot gebruikt `StandardCharsets.UTF_8` overal expliciet ✅
+- Em dash (U+2014, 3-byte) overleeft de OpenMRS-grens intact ✅
+- Arabisch/Chinees wordt door de OpenMRS REST-API gecorrumpeerd naar `?` (MySQL-beperking in testomgeving) — dit is vóór onze module; onze stack heeft geen eigen encoding-verlies ⚠️
 
 ### B3 🟡 NFR-9a — Grafana dashboard-bewijs
 Draai `scripts\loadtest.ps1 -Scenario stress`, screenshot dashboard (messages/min, errors, retries, per-provider latency), toevoegen aan `docs/PerformanceRapport/`. **Inspanning: ~1 u.**
@@ -129,8 +135,11 @@ De docent: *"In de presentatie zien we dit ook terug."* De documenten zijn nu go
 ### D1 ✅ ADR-map-verwijzing gecorrigeerd (consistentie-bug)
 ~~De traceerbaarheidsmatrix en `CLAUDE.md` verwezen naar `docs/ADR 1 - 4/`, maar de map heet `docs/ADR's/`.~~ **Opgelost (2026-06-25):** alle verwijzingen in `README.md`, `CLAUDE.md` en de traceerbaarheidsmatrix wijzen nu naar `docs/ADR's/`, en de ADR-telling is bijgewerkt naar ADR-001 t/m ADR-011.
 
-### D2 🟡 Ontbrekende ADR's controleren
-- **Actie:** loop de architectuurkeuzes na: hebben we een ADR voor de **frontend/registratie-UI keuze**, voor **TLS via aparte nginx-container** (NFR-5b), voor **circuit breaker in-memory vs gedeeld**? Zo niet en het is een echte keuze met alternatieven → korte ADR toevoegen. Controleer ook dat elke ADR een **"Overwogen opties + afwijscriteria"**-sectie heeft (20-punts-eis). **Inspanning: 1–2 u.**
+### D2 ✅ ADR-volledigheid gecheckt
+~~Controleer ook dat elke ADR een "Overwogen opties + afwijscriteria"-sectie heeft (20-punts-eis).~~  
+**Opgelost (2026-06-25):** alle 11 ADRs nagelopen op alternatieven + afwijscriteria.
+- ADR-001/003/004/005/006/007/008/009/010/011: hadden al volledige opties + afwijscriteria.
+- **ADR-002 herschreven:** per technologielaag (backend, queue, database) nu expliciete Optie 1/2/3-structuur met voordelen, nadelen en "Afgewezen omdat"-conclusie. TLS en circuit breaker zijn gedekt in ADR-011 resp. ADR-003/007.
 
 ### D3 ✅ FMEA-claims verifiëren (bewijs ≠ belofte)
 ~~Dit is het hart van de betrouwbaarheids-feedback. **Elke test die FMEA/traceability noemt moet écht bestaan en het scenario testen.**~~  
@@ -140,16 +149,25 @@ De docent: *"In de presentatie zien we dit ook terug."* De documenten zijn nu go
 - FM-11: hergeformuleerd naar `EndToEndNotificationFlowTest` (zelfde reden als FM-3).
 - FM-2/4/5/6/7/8/9/10: geverifieerd — claims kloppen of zijn eerlijk als operationeel vermeld.
 
-### D4 🟡 Repo-hygiëne voor inlevering
-Verplicht: geen libraries/temp/secrets. Check `.gitignore` (`target/`, `node_modules/`, `.env`), geen hardcoded `DB_ENCRYPTION_KEY`/`SAAS_ADMIN_KEY` in de inlevering. **Inspanning: 30 min.**
+### D4 ✅ Repo-hygiëne gecheckt
+~~Verplicht: geen libraries/temp/secrets.~~ **Opgelost (2026-06-25):** alle checks groen.
+- `.gitignore` dekt `**/target/`, `node_modules/`, `.env` ✅
+- `git ls-files` bevat geen `target/`, `node_modules/`, `.env` — alleen `.env.example` gecommit ✅
+- `DB_ENCRYPTION_KEY` heeft lege default (`${DB_ENCRYPTION_KEY:}`) — veilig ✅
+- `SAAS_ADMIN_KEY` heeft default `admin-secret` in `application.yml:37` — bekende valkuil (gedocumenteerd in `CLAUDE.md`), acceptabel voor demo; productie: zet `SAAS_ADMIN_KEY` env var ✅
 
-### D5 🔴 D4c — commit-tabel uit echte `git log`
-Het realisatielogboek heeft nog een placeholder-tabel.
-```powershell
-git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending
-git log --author="<naam>" --pretty=format:"%h %ad %s" --date=short
-```
-Vul echte cijfers in, verwijder de waarschuwing. **Inspanning: 30 min.**
+### D5 ✅ D4c — commit-tabel bijgewerkt
+~~Het realisatielogboek heeft nog een placeholder-tabel.~~ **Opgelost (2026-06-25):** tabel in `docs/Realisatielogboek/realisatielogboek.md` bijgewerkt met echte git-cijfers en placeholder-waarschuwing verwijderd.
+
+| Teamlid | Commits |
+|---|---|
+| Wassim Balouda (Wasssiimm) | 28 |
+| Thijs van de Veen (Dice-cmd) | 16 |
+| Storm Kroonen (S.k2004) | 10 |
+| Nick de Rooij (NickdeRooij) | 4 |
+| **Totaal** | **58** |
+
+> ⚠️ **Vóór inlevering bijwerken:** commit-aantallen opnieuw uitvoeren zodra alle herkansingswerk gecommit is. Commando: `git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending`
 
 ---
 
@@ -216,13 +234,13 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 - [x] D3 FMEA-claims verifiëren tegen echte tests — **belangrijkste groep-taak** (Wassim)
 - [ ] B1/B2/B3 de 3 ⚠️-verificaties afmaken (verdeel: Thijs NFR-4+8, Storm NFR-9a)
 - [ ] A2 "test- en verbeterstappen" sectie in performance-rapport (Storm)
-- [ ] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
-- [ ] D5 commit-tabel uit git log (Wassim, 30 min)
+- [x] D2 ADR-volledigheid + alternatieven-secties checken (Nick)
+- [x] D5 commit-tabel uit git log (Thijs, 30 min)
 
 **Dag 2 — presentatie + CGI:**
 - [ ] C presentatie-draaiboek met traceerbaarheid + FMEA als hoofdmoot (allen)
 - [ ] A1 één requirement live end-to-end uitwerken voor demo (allen)
-- [ ] Repo-hygiëne D4 (Wassim)
+- [x] Repo-hygiëne D4 (Wassim)
 - [ ] **Ieder individueel: Deel E doorwerken en hardop oefenen** — ADR-005 (multi-tenant), ADR-006 (provider-uitbreiding), testpiramide + FMEA-koppeling. Oefen met elkaar als examinator.
 
 ---
@@ -238,4 +256,4 @@ Het testrapport demo zegt "maak één klasse, klaar" — **dat is precies waarom
 
 ---
 
-_Laatst bijgewerkt: 2026-06-24. Werk bij naarmate punten worden afgerond._
+_Laatst bijgewerkt: 2026-06-25. Werk bij naarmate punten worden afgerond._
