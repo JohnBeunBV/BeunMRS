@@ -183,11 +183,11 @@ De docent: _"In de presentatie zien we dit ook terug."_ De documenten zijn nu go
 
 | Teamlid                      | Commits |
 | ---------------------------- | ------- |
-| Wassim Balouda (Wasssiimm)   | 28      |
+| Wassim Balouda (Wasssiimm)   | 36      |
 | Thijs van de Veen (Dice-cmd) | 20      |
+| Nick de Rooij (NickdeRooij)  | 13      |
 | Storm Kroonen (S.k2004)      | 10      |
-| Nick de Rooij (NickdeRooij)  | 8       |
-| **Totaal**                   | **66**  |
+| **Totaal**                   | **79**  |
 
 > ⚠️ **Vóór inlevering bijwerken:** commit-aantallen opnieuw uitvoeren zodra alle herkansingswerk gecommit is. Commando: `git log --format="%an" | Sort-Object | Group-Object | Select-Object Count, Name | Sort-Object Count -Descending`
 

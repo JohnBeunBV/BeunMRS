@@ -42,7 +42,7 @@ Zie @AGENTS.md voor rubric en sprints
 | **NFR-2b** | Gedocumenteerd voor beheerders | `docs/README-beheerder.md` | ❌ **TODO** |
 | **NFR-2c** | Beveiligd volgens best practices | API key auth + AES-256 + masking | ✅ |
 | **NFR-3** | 4 providers (SwiftSend, LegacyLink, AsyncFlow, SecurePost) | Alle 4 geïmplementeerd | ✅ |
-| **NFR-4** | OpenMRS 2.7.x compatibiliteit | Gebruikt REST v1 API (stabiel sinds 2.x) | ⚠️ **TE VERIFIËREN** |
+| **NFR-4** | OpenMRS 2.7.x compatibiliteit | Gebruikt REST v1 API (Appointments-module + core REST, 2.x én 3.x); uitwisselbare poller | ✅ **Gemotiveerd (ADR-003)** |
 | **NFR-5a** | AES-256 voor opslag | `AesEncryptionService` (GCM mode) | ✅ |
 | **NFR-5b** | **TLS 1.3 voor transport** | `notification-nginx` container (NGINX + TLS 1.3 only, self-signed cert) | ✅ |
 | **NFR-5c** | Credentials niet in code/config | `.env` + `AesEncryptionService` | ✅ |
@@ -53,8 +53,8 @@ Zie @AGENTS.md voor rubric en sprints
 | **NFR-6d** | Berichttransformatie | Provider adapters mappen event → provider-formaat | ✅ |
 | **NFR-6e** | Queueing en retry | RabbitMQ + outbox + `FailedNotificationRetryJob` | ✅ |
 | **NFR-7** | Zelfstandig + fallback | Outbox + circuit breaker + retry | ✅ |
-| **NFR-8** | Karaktersets (UTF-8) | DB UTF-8 + Spring UTF-8 + JSON UTF-8 | ⚠️ **Aantonen met testbericht** |
-| **NFR-9a** | Monitoring + dashboard | Grafana + Loki + Prometheus | ⚠️ **Dashboard config nodig** |
+| **NFR-8** | Karaktersets (UTF-8) | DB UTF-8 + Spring UTF-8 + JSON UTF-8 | ✅ **Gedocumenteerd in testrapport §3.17** |
+| **NFR-9a** | Monitoring + dashboard | Grafana + Loki + Prometheus | ✅ **Dashboard + meetwaarden in PERFORMANCE-RAPPORT.md** |
 | **NFR-9b** | OpenTelemetry | Niet geïmplementeerd — alleen Micrometer/Prometheus | ❌ **TODO of motiveren** |
 | **NFR-10** | 14-dagen verwijdering | `DataRetentionJob` cron 02:00 daily | ✅ |
 | **NFR-11** | 1-jaar meta-info retentie | `notification_audit_log` (PII-vrij) + `purgeOldAuditLog()` | ✅ |
@@ -79,7 +79,7 @@ Zie @AGENTS.md voor rubric en sprints
 | **D4a** | Realisatielogboek: ontwikkeltools | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
 | **D4b** | Realisatielogboek: AI-tools + voorbeelden | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
 | **D4c** | Realisatielogboek: commits per teamlid | ⚠️ Tabel aanwezig — bijwerken met `git log` vóór inlevering |
-| **D5** | Testrapportage | ✅ `docs/Tests/testrapport.md` (109 tests) |
+| **D5** | Testrapportage | ✅ `docs/Tests/testrapport.md` (129 tests) |
 | **Traceerbaarheid** | Requirements → ADR → code → test | ✅ `docs/Traceerbaarheid/traceerbaarheidsmatrix.md` |
 
 ---
@@ -90,8 +90,7 @@ Zie @AGENTS.md voor rubric en sprints
 
 ### Code/configuratie (TIER 1)
 
-- [ ] **NFR-4 — OpenMRS 2.7.x verificatie**
-  Test of de poller werkt tegen OpenMRS 2.7.x specifiek (huidige Docker draait reference-app 3.x). Documenteer welke endpoints we gebruiken en sinds welke OpenMRS-versie die bestaan.
+- [x] ~~**NFR-4 — OpenMRS 2.7.x verificatie**~~ ✅ Gemotiveerd in ADR-003 § OpenMRS-versiecompatibiliteit: uitsluitend `/ws/rest/v1/`-endpoints (Appointments-module + core REST, beschikbaar op 2.x én 3.x) + uitwisselbare poller-laag. Niet live op 2.7.x getest — bewust gemotiveerd i.p.v. apart 2.7.x-image opzetten.
 
 - [x] ~~**NFR-9b — OpenTelemetry of motivatie**~~ ✅ Gemotiveerd in ADR-010: Micrometer + Prometheus + Loki dekt NFR-9a volledig; OTLP-overhead niet gerechtvaardigd voor single-service.
 
@@ -128,8 +127,8 @@ Zie @AGENTS.md voor rubric en sprints
 ### Aantoonbaarheid (TIER 3 — bewijs in documentatie)
 
 - [ ] **NFR-6a** HL7 berichtvalidatie expliciet aantonen (Jackson strict mode of equivalent)
-- [ ] **NFR-8** UTF-8 testbericht (Arabisch/Chinees) door hele stack
-- [ ] **NFR-9a** Grafana dashboard met: messages/min, errors, retry counts, per-provider latency
+- [x] ~~**NFR-8** UTF-8 testbericht (Arabisch/Chinees) door hele stack~~ ✅ Gedocumenteerd in `docs/Tests/testrapport.md` §3.17 (SQL bytes-analyse + Spring-code-audit + OpenMRS-grens-beperking)
+- [x] ~~**NFR-9a** Grafana dashboard met: messages/min, errors, retry counts, per-provider latency~~ ✅ Dashboard `beunmrs-perf` aanwezig + meetwaarden in `docs/PerformanceRapport/PERFORMANCE-RAPPORT.md`
 
 ### End-to-end verificatie (TIER 4 — laatste stap)
 

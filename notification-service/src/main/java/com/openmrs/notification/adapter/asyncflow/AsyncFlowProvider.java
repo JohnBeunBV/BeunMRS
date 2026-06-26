@@ -56,7 +56,7 @@ public class AsyncFlowProvider implements NotificationProvider {
         this.studentGroup  = studentGroup;
     }
 
-    @Override public NotificationChannel channel() { return NotificationChannel.PUSH; }
+    @Override public NotificationChannel channel() { return NotificationChannel.SMS; }
     @Override public String providerName()          { return "AsyncFlow"; }
 
     @Override

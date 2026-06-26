@@ -62,11 +62,11 @@ Gegenereerd op 2026-06-25 via `git log --format="%an" | Sort-Object | Group-Obje
 
 | Teamlid | Git-gebruikersnaam | Commits | Hoofdbijdragen |
 |---|---|---|---|
-| Wassim Balouda | Wasssiimm | 28 | C4-diagrammen, README, PR-beheer, FMEA-documentatie, RabbitMQ topologie |
-| Thijs van de Veen | Dice-cmd | 16 | OpenMRS poller (`OpenMrsAppointmentPoller`, `AppointmentReconciler`), `ReminderScheduler`, `ReminderDispatchJob`, `DataRetentionJob`, testrapport, herkansingswerk (FMEA-claims, ADR-002, ADR-011, repo-hygiëne) |
+| Wassim Balouda | Wasssiimm | 36 | C4-diagrammen, README, PR-beheer, FMEA-documentatie, RabbitMQ topologie |
+| Thijs van de Veen | Dice-cmd | 20 | OpenMRS poller (`OpenMrsAppointmentPoller`, `AppointmentReconciler`), `ReminderScheduler`, `ReminderDispatchJob`, `DataRetentionJob`, testrapport, herkansingswerk (FMEA-claims, ADR-002, ADR-011, repo-hygiëne) |
+| Nick de Rooij | NickdeRooij | 13 | Provider adapters (SwiftSend, LegacyLink, SecurePost, AsyncFlow), `NotificationDispatcher`, `NotificationProviderContractTest` |
 | Storm Kroonen | S.k2004 | 10 | Architectuurontwerp, multi-tenant SaaS kern (`TenantContext`, `TenantService`, `TenantApiKeyFilter`), security hardening (`GlobalExceptionHandler`, AES-256), ADRs, Docker Compose |
-| Nick de Rooij | NickdeRooij | 4 | Provider adapters (SwiftSend, LegacyLink, SecurePost, AsyncFlow), `NotificationDispatcher`, `NotificationProviderContractTest` |
-| **Totaal** | | **58** | |
+| **Totaal** | | **79** | |
 
 ---
 
@@ -76,4 +76,4 @@ Gegenereerd op 2026-06-25 via `git log --format="%an" | Sort-Object | Group-Obje
 |---|---|---|
 | D4a — Ontwikkeltools | ✅ | Dit document, sectie "Gebruikte ontwikkeltools" |
 | D4b — AI-tools + voorbeelden | ✅ | Dit document, sectie "Gebruikte AI-tools" |
-| D4c — Commits per teamlid | ✅ (handmatig bijwerken vóór inlevering) | Dit document, sectie "Commits per teamlid" |
+| D4c — Commits per teamlid | ✅ (echte git-cijfers; opnieuw draaien zodra alles naar main is gemerged) | Dit document, sectie "Commits per teamlid" |

@@ -136,7 +136,7 @@ public class OutboxService {
      *
      * <p>
      * NFR-5: phone and e-mail are always masked before storage
-     * (e.g. "+316****678", "b****@example.com"). Real contact details are only
+     * (e.g. "+31****678", "b****@example.com"). Real contact details are only
      * held in memory during the send attempt.
      * </p>
      *
