@@ -63,8 +63,8 @@ Deze matrix is het antwoord op de vraag: **"Hoe weten jullie dat requirement X b
 | **NFR-6d** — Berichttransformatie                                      | ADR-006          | Provider-adapters mappen `AppointmentEvent` naar providerspecifiek formaat (JSON, SOAP XML, AsyncFlow commands)                                               | `SwiftSendProviderTest`, `LegacyLinkProviderTest`, `AsyncFlowProviderTest` — testen berichtinhoud per provider                             | ✅                                           |
 | **NFR-6e** — Queueing en retry                                         | ADR-004, ADR-007 | RabbitMQ queues (durable, DLX); `OutboxRelayJob` (30s interval, max 5 pogingen); `FailedNotificationRetryJob` (exponential backoff: 5→15 min)                 | `OutboxServiceTest`; `OutboxRelayJobTest` — relay → publish + retry → `failed_at`; `FailedNotificationRetryJobTest` — backoff 5→15 min → `permanently_failed`; `FMEA_Documentatie.md` FM-2, FM-5                                     | ✅                                           |
 | **NFR-7** — Zelfstandig + fallback bij uitval                          | ADR-003, ADR-007 | Outbox-patroon (`outbox_events` → `OutboxRelayJob`); circuit breaker (5 fouten → 2 min pauze per tenant-slug); `AppointmentReconciler` als fallback poller    | `circuitbreaker-test.ps1` operationeel testscript; `FMEA_Documentatie.md` FM-9                                                             | ✅                                           |
-| **NFR-8** — Karaktersets (UTF-8)                                       | ADR-002          | PostgreSQL DB op UTF-8; Spring `application.yml` UTF-8; JSON-responses via Jackson; NGINX met UTF-8 charset                                                   | `README-beheerder.md` sectie 9; handmatige test met niet-Latijnse karakters (Arabisch/Chinees)                                             | ⚠️ Handmatige UTF-8 testbericht aantonen     |
-| **NFR-9a** — Monitoring + dashboard                                    | ADR-010          | Prometheus-metrics via Micrometer; Loki voor logs (Promtail); Grafana dashboard op `http://localhost:3000`                                                    | `README-beheerder.md` sectie 10 (Grafana dashboard URLs); `infra/grafana/provisioning/`                                                    | ⚠️ Dashboard-screenshot als bewijs toevoegen |
+| **NFR-8** — Karaktersets (UTF-8)                                       | ADR-002          | PostgreSQL DB op UTF-8; Spring `application.yml` UTF-8; JSON-responses via Jackson; NGINX met UTF-8 charset; `AesEncryptionService`, `TenantService`, `LegacyLinkProvider` gebruiken `StandardCharsets.UTF_8` expliciet | `docs/Tests/testrapport.md` §3.17 — SQL bytes-analyse (Arabisch 34 bytes, Chinees 21 bytes), Spring-code-audit, end-to-end test met em-dash U+2014 via OpenMRS; OpenMRS-grens-beperking gedocumenteerd | ✅                                           |
+| **NFR-9a** — Monitoring + dashboard                                    | ADR-010          | Prometheus-metrics via Micrometer; Loki voor logs (Promtail); Grafana dashboard `beunmrs-perf` (`infra/grafana/provisioning/`)                                | `docs/Tests/testrapport.md` §3.15 — meetwaarden 166 notif/sec, 100% outbox relay, ~63 ms latency; `docs/PerformanceRapport/PERFORMANCE-RAPPORT.md`; live dashboard `http://localhost:3000/d/beunmrs-perf` | ✅                                           |
 | **NFR-9b** — OpenTelemetry                                             | ADR-010          | Bewust niet geïmplementeerd — Micrometer + Prometheus + Loki dekt NFR-9a volledig. Motivatie in ADR-010.                                                      | ADR-010 motivatie                                                                                                                          | ✅ (gemotiveerd)                             |
 | **NFR-10** — 14-dagen verwijdering PII                                 | ADR-008          | `DataRetentionJob.deletePiiData()` — dagelijks 02:00, DELETE FROM `notification_log` WHERE `created_at < NOW() - 14 days`                                     | `DataRetentionJobTest` — `deletesPiiAfter14Days_fromAllOperationalTables` (notification_log, outbox_events, seen_appointments, scheduled_notifications)                                                                              | ✅                                           |
 | **NFR-11** — 1-jaar meta-info retentie                                 | ADR-008          | `DataRetentionJob.archiveToAuditLog()` + `purgeOldAuditLog()` — PII-vrije kopie naar `notification_audit_log`; purge na 1 jaar                                | `DataRetentionJobTest` — `archivesNonPiiToAuditLog` (PII-vrije kopie) + `purgesAuditLogAfterOneYear`                                                                      | ✅                                           |
@@ -75,18 +75,11 @@ Deze matrix is het antwoord op de vraag: **"Hoe weten jullie dat requirement X b
 
 ## Samenvatting
 
-| Categorie                    | Totaal | ✅ Bewezen | ⚠️ Handmatig |
-| ---------------------------- | ------ | ---------- | ------------ |
-| Functionele eisen (FR)       | 10     | 10         | 0            |
-| Niet-functionele eisen (NFR) | 13     | 11         | 2            |
-| **Totaal**                   | **23** | **21**     | **2**        |
-
-### Openstaande handmatige verificaties
-
-| Requirement | Actie                                                       |
-| ----------- | ----------------------------------------------------------- |
-| NFR-8       | Stuur testbericht met Arabische/Chinese tekst door de stack |
-| NFR-9a      | Voeg Grafana dashboard-screenshot toe als bewijs            |
+| Categorie                    | Totaal | ✅ Bewezen |
+| ---------------------------- | ------ | ---------- |
+| Functionele eisen (FR)       | 10     | 10         |
+| Niet-functionele eisen (NFR) | 13     | 13         |
+| **Totaal**                   | **23** | **23**     |
 
 > **NFR-4** is gemotiveerd (niet live op 2.7.x getest): de module gebruikt uitsluitend `/ws/rest/v1/`-endpoints (Appointments-module + core REST, beschikbaar op de 2.x- én 3.x-lijn) en de poller-laag is uitwisselbaar (ADR-003 § OpenMRS-versiecompatibiliteit). Daarom als ✅ gemotiveerd geteld, niet als openstaande verificatie.
 

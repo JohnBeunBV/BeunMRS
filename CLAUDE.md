@@ -53,8 +53,8 @@ Zie @AGENTS.md voor rubric en sprints
 | **NFR-6d** | Berichttransformatie | Provider adapters mappen event → provider-formaat | ✅ |
 | **NFR-6e** | Queueing en retry | RabbitMQ + outbox + `FailedNotificationRetryJob` | ✅ |
 | **NFR-7** | Zelfstandig + fallback | Outbox + circuit breaker + retry | ✅ |
-| **NFR-8** | Karaktersets (UTF-8) | DB UTF-8 + Spring UTF-8 + JSON UTF-8 | ⚠️ **Aantonen met testbericht** |
-| **NFR-9a** | Monitoring + dashboard | Grafana + Loki + Prometheus | ⚠️ **Dashboard config nodig** |
+| **NFR-8** | Karaktersets (UTF-8) | DB UTF-8 + Spring UTF-8 + JSON UTF-8 | ✅ **Gedocumenteerd in testrapport §3.17** |
+| **NFR-9a** | Monitoring + dashboard | Grafana + Loki + Prometheus | ✅ **Dashboard + meetwaarden in PERFORMANCE-RAPPORT.md** |
 | **NFR-9b** | OpenTelemetry | Niet geïmplementeerd — alleen Micrometer/Prometheus | ❌ **TODO of motiveren** |
 | **NFR-10** | 14-dagen verwijdering | `DataRetentionJob` cron 02:00 daily | ✅ |
 | **NFR-11** | 1-jaar meta-info retentie | `notification_audit_log` (PII-vrij) + `purgeOldAuditLog()` | ✅ |
@@ -79,7 +79,7 @@ Zie @AGENTS.md voor rubric en sprints
 | **D4a** | Realisatielogboek: ontwikkeltools | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
 | **D4b** | Realisatielogboek: AI-tools + voorbeelden | ✅ `docs/Realisatielogboek/realisatielogboek.md` |
 | **D4c** | Realisatielogboek: commits per teamlid | ⚠️ Tabel aanwezig — bijwerken met `git log` vóór inlevering |
-| **D5** | Testrapportage | ✅ `docs/Tests/testrapport.md` (109 tests) |
+| **D5** | Testrapportage | ✅ `docs/Tests/testrapport.md` (129 tests) |
 | **Traceerbaarheid** | Requirements → ADR → code → test | ✅ `docs/Traceerbaarheid/traceerbaarheidsmatrix.md` |
 
 ---
@@ -127,8 +127,8 @@ Zie @AGENTS.md voor rubric en sprints
 ### Aantoonbaarheid (TIER 3 — bewijs in documentatie)
 
 - [ ] **NFR-6a** HL7 berichtvalidatie expliciet aantonen (Jackson strict mode of equivalent)
-- [ ] **NFR-8** UTF-8 testbericht (Arabisch/Chinees) door hele stack
-- [ ] **NFR-9a** Grafana dashboard met: messages/min, errors, retry counts, per-provider latency
+- [x] ~~**NFR-8** UTF-8 testbericht (Arabisch/Chinees) door hele stack~~ ✅ Gedocumenteerd in `docs/Tests/testrapport.md` §3.17 (SQL bytes-analyse + Spring-code-audit + OpenMRS-grens-beperking)
+- [x] ~~**NFR-9a** Grafana dashboard met: messages/min, errors, retry counts, per-provider latency~~ ✅ Dashboard `beunmrs-perf` aanwezig + meetwaarden in `docs/PerformanceRapport/PERFORMANCE-RAPPORT.md`
 
 ### End-to-end verificatie (TIER 4 — laatste stap)
 
