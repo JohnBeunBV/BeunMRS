@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,7 +29,7 @@ public class TenantAdminController {
 
     @GetMapping
     public ResponseEntity<?> listTenants(@RequestHeader(value = "X-Admin-Key", required = false) String key) {
-        if (!adminKey.equals(key)) return unauthorized();
+        if (!isValidAdminKey(key)) return unauthorized();
         List<Tenant> tenants = tenantService.getActiveTenants();
         List<Map<String, Object>> view = tenants.stream().map(t -> Map.<String, Object>of(
                 "id",           t.getId(),
@@ -45,9 +47,21 @@ public class TenantAdminController {
     public ResponseEntity<?> deactivate(
             @PathVariable UUID id,
             @RequestHeader(value = "X-Admin-Key", required = false) String key) {
-        if (!adminKey.equals(key)) return unauthorized();
+        if (!isValidAdminKey(key)) return unauthorized();
         tenantService.deactivate(id);
         return ResponseEntity.ok(Map.of("message", "Tenant deactivated"));
+    }
+
+    /**
+     * Constant-time vergelijking van de admin-sleutel om timing-aanvallen te
+     * voorkomen ({@link MessageDigest#isEqual} stopt niet vroegtijdig bij de
+     * eerste afwijkende byte, zoals {@code String.equals} wel doet).
+     */
+    private boolean isValidAdminKey(String key) {
+        if (key == null) return false;
+        return MessageDigest.isEqual(
+                adminKey.getBytes(StandardCharsets.UTF_8),
+                key.getBytes(StandardCharsets.UTF_8));
     }
 
     private ResponseEntity<Map<String, String>> unauthorized() {

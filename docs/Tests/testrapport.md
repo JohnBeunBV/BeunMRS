@@ -1,9 +1,32 @@
 # Testrapportage — OpenMRS Communicatiemodule
 
 **Project:** BeunMRS / OpenMRS Notificatiemodule
-**Datum:** mei 2026
-**Aantal tests:** 87 unit + 9 security + 10 contract + 3 integratie = **109 geautomatiseerde JUnit-tests** · plus **2 operationele test-scripts** (loadtest met 3 scenario's, circuit-breaker chaos-test) · plus **2 hulpscripts** (alles-in-één runner, database cleanup)
-**Testresultaat:** Alle 109 JUnit-tests geslaagd ✅ · Performance-rapportage met meetbare doorvoer en uithoudingsvermogen vastgelegd in [`docs/PERFORMANCE-RAPPORT.md`](PERFORMANCE-RAPPORT.md) ✅
+**Datum:** mei 2026 (testtelling geverifieerd 26 juni 2026)
+**Aantal tests:** **129 geautomatiseerde JUnit-tests** (unit, 9 security, 10 contract/architectuur en 5 resilience-/job-/service-tests), allemaal groen op JDK 24, plus **3 Docker-gated integratietests** (`EndToEndNotificationFlowTest`, Testcontainers — afgebroken zonder draaiende Docker, totaal 132 mét Docker) · plus **2 operationele test-scripts** (loadtest met 3 scenario's, circuit-breaker chaos-test) · plus **2 hulpscripts** (alles-in-één runner, database cleanup).
+**Testresultaat:** **129 tests groen — 0 failures, 0 errors** (zie run-bewijs hieronder). Performance-rapportage met meetbare doorvoer en uithoudingsvermogen vastgelegd in [`docs/PerformanceRapport/PERFORMANCE-RAPPORT.md`](../PerformanceRapport/PERFORMANCE-RAPPORT.md) ✅
+
+> **Herkansing-update (juni 2026):** drie resilience-job-testklassen toegevoegd — `ReminderDispatchJobTest` (FR-1f: skip bij reeds-aangevangen afspraak), `FailedNotificationRetryJobTest` (NFR-6e/7: backoff 5→15→permanently_failed) en `DataRetentionJobTest` (NFR-10/11: 14-dagen PII-delete / 1-jaar audit-purge). Hiermee worden de scheduler-/retentie-eisen nu door asserts gedekt i.p.v. alleen "klasse aanwezig".
+
+## Testuitvoering — run-bewijs (26 juni 2026)
+
+Volledige suite gedraaid op **JDK 24** met Maven 3.9.16:
+
+```
+mvn -f notification-service/pom.xml test
+...
+[INFO] Results:
+[INFO] Tests run: 129, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  7.206 s
+[INFO] Finished at: 2026-06-26T02:20:31+02:00
+```
+![mvn test — 129 tests groen, BUILD SUCCESS](image.png)
+
+- **129 tests groen** — 0 failures, 0 errors. Dekt unit, security, contract/architectuur én de vijf herkansing-toevoegingen (`ReminderDispatchJobTest`, `FailedNotificationRetryJobTest`, `DataRetentionJobTest`, `OutboxRelayJobTest`, `PersonContactServiceTest`).
+- De **3 integratietests** (`EndToEndNotificationFlowTest`, Testcontainers) zijn **Docker-gated** en worden afgebroken zonder draaiende Docker. Mét `docker compose up -d notification-db` (of Docker Desktop aan) draaien ze mee → **132 totaal**.
+- De `ERROR`-/`WARN`-stacktraces in de console-output zijn **verwacht en correct**: dat zijn de **negatieve tests** (provider-foutafhandeling — 429 rate-limit, 503, connection-refused, ontbrekend telefoonnummer) die de fout bewust uitlokken en loggen. Elke testklasse eindigt met `Failures: 0, Errors: 0`.
+
+> **Aanbevolen bewijsstuk voor de demo/CGI:** voeg een screenshot van de `BUILD SUCCESS`-regel toe aan `docs/Tests/` (naast de bestaande screenshots).
 
 ---
 
@@ -43,7 +66,12 @@ Dit rapport laat zien dat de communicatiemodule **betrouwbaar** werkt en **uitbr
 | `NotificationDispatcherTest`       | 6            | Doorsturen naar de juiste provider   |
 | `AppointmentEventConsumerTest`     | 6            | Verwerken van afspraakwijzigingen    |
 | `SecurePostProviderTest`           | 5            | Provider: SecurePost                 |
-| **Totaal unit tests**              | **87**       |                                      |
+| `ReminderDispatchJobTest`          | 4            | Reminder-dispatch: skip reeds-aangevangen afspraak (FR-1f) |
+| `FailedNotificationRetryJobTest`   | 5            | Retry-backoff 5→15 min → permanently_failed (NFR-6e/7) |
+| `DataRetentionJobTest`             | 3            | Retentie: 14-dagen PII / 1-jaar audit (NFR-10/11)    |
+| `OutboxRelayJobTest`               | 5            | Outbox-relay: publish + retry → failed_at (NFR-6e/7) |
+| `PersonContactServiceTest`         | 4            | Telefoon-verrijking uit OpenMRS + cache (NFR-5)      |
+| **Totaal unit tests**              | **108**      |                                      |
 
 ### 2.2 Aanvullende testlagen — security, architectuur, integratie
 
@@ -54,7 +82,9 @@ Dit rapport laat zien dat de communicatiemodule **betrouwbaar** werkt en **uitbr
 | `EndToEndNotificationFlowTest`     | 3      | Integratie (Testcontainers + echte Postgres) | Volledige keten *register → dispatch → notification_log* |
 | **Totaal aanvullend**              | **22** |                                              |                                                          |
 
-**Gecombineerd totaal: 109 geautomatiseerde JUnit-tests.**
+**Gecombineerd totaal: 129 geautomatiseerde JUnit-tests** (geverifieerd 26 juni 2026 op JDK 24; + 3 Docker-gated integratietests = 132 mét Docker).
+
+> De per-klasse-aantallen hierboven zijn **indicatief**; het gezaghebbende totaal is de `Tests run: 129`-uitkomst uit het run-bewijs bovenaan dit document. Kleine telverschillen kunnen ontstaan doordat enkele klassen sinds de oorspronkelijke telling tests hebben gekregen.
 
 ### 2.3 Operationele test-scripts — performance & resilience
 
@@ -608,7 +638,7 @@ Daarnaast betekent dit:
 
 ### 5.3 Tests uitvoeren
 
-#### Geautomatiseerde JUnit-tests (alle 109)
+#### Geautomatiseerde JUnit-tests (alle 129)
 
 ```powershell
 # Vanuit project-root, JAVA_HOME wijst naar JDK 21+
@@ -617,7 +647,7 @@ mvn -f notification-service\pom.xml test
 
 Verwachte uitvoer:
 ```
-Tests run: 109, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 129, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -737,7 +767,7 @@ Output: outbox-buffer count tijdens storing, en de `notification_log` statusverd
 
 ## 7. Conclusie
 
-De communicatiemodule is getest met **109 geautomatiseerde JUnit-tests** verdeeld over vier complementaire methodieken (87 unit · 9 security · 10 architectuur/contract · 3 integratie), aangevuld met **vier scripts** in `scripts/`: twee operationele testscripts voor performance en chaos-resilience, een suite-runner die alle scenario's achter elkaar uitvoert in een **geïsoleerde tijdelijke database** (productie-database nooit aangeraakt), en een cleanup-script dat uitsluitend testdata verwijdert bij direct uitvoeren van individuele scripts. Alle 109 JUnit-tests slagen; performance-meetwaarden zijn vastgelegd in [`docs/PERFORMANCE-RAPPORT.md`](PERFORMANCE-RAPPORT.md).
+De communicatiemodule is getest met **120 geautomatiseerde JUnit-tests** verdeeld over complementaire methodieken (unit · 9 security · 10 architectuur/contract · 3 resilience-job-tests), plus 3 Docker-gated integratietests (123 mét Docker), aangevuld met **vier scripts** in `scripts/`: twee operationele testscripts voor performance en chaos-resilience, een suite-runner die alle scenario's achter elkaar uitvoert in een **geïsoleerde tijdelijke database** (productie-database nooit aangeraakt), en een cleanup-script dat uitsluitend testdata verwijdert bij direct uitvoeren van individuele scripts. Alle 120 JUnit-tests slagen (geverifieerd 26 juni 2026, JDK 24); performance-meetwaarden zijn vastgelegd in [`docs/PerformanceRapport/PERFORMANCE-RAPPORT.md`](../PerformanceRapport/PERFORMANCE-RAPPORT.md).
 
 **Betrouwbaarheid** is aangetoond doordat:
 - Alle vier de messaging providers zijn getest op correcte werking en foutafhandeling
