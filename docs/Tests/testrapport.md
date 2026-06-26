@@ -59,7 +59,7 @@ Dit rapport laat zien dat de communicatiemodule **betrouwbaar** werkt en **uitbr
 | `AsyncFlowProviderTest`            | 10           | Provider: AsyncFlow                  |
 | `LegacyLinkProviderTest`           | 9            | Provider: LegacyLink                 |
 | `TenantRegistrationControllerTest` | 8            | Registratie van ziekenhuizen         |
-| `OutboxServiceTest`                | 7            | Opslaan van berichten in de database |
+| `OutboxServiceTest`                | 9            | Opslaan van berichten + DB-retry (FM-1) |
 | `SwiftSendProviderTest`            | 7            | Provider: SwiftSend                  |
 | `ReminderSchedulerTest`            | 7            | Plannen van herinneringen            |
 | `AesEncryptionServiceTest`         | 6            | Versleuteling van gegevens           |
@@ -71,7 +71,7 @@ Dit rapport laat zien dat de communicatiemodule **betrouwbaar** werkt en **uitbr
 | `DataRetentionJobTest`             | 3            | Retentie: 14-dagen PII / 1-jaar audit (NFR-10/11)    |
 | `OutboxRelayJobTest`               | 5            | Outbox-relay: publish + retry → failed_at (NFR-6e/7) |
 | `PersonContactServiceTest`         | 4            | Telefoon-verrijking uit OpenMRS + cache (NFR-5)      |
-| **Totaal unit tests**              | **108**      |                                      |
+| **Totaal unit tests**              | **110**      |                                      |
 
 ### 2.2 Aanvullende testlagen — security, architectuur, integratie
 
@@ -82,9 +82,9 @@ Dit rapport laat zien dat de communicatiemodule **betrouwbaar** werkt en **uitbr
 | `EndToEndNotificationFlowTest`     | 3      | Integratie (Testcontainers + echte Postgres) | Volledige keten *register → dispatch → notification_log* |
 | **Totaal aanvullend**              | **22** |                                              |                                                          |
 
-**Gecombineerd totaal: 129 geautomatiseerde JUnit-tests** (geverifieerd 26 juni 2026 op JDK 24; + 3 Docker-gated integratietests = 132 mét Docker).
+**Som over alle testklassen: 132** (110 unit + 9 security + 10 contract/architectuur + 3 integratie). Hiervan draaien **129 groen zonder Docker** op JDK 24; de 3 Testcontainers-integratietests in `EndToEndNotificationFlowTest` vereisen een draaiende Docker (samen **132 mét Docker**). Geverifieerd 26 juni 2026.
 
-> De per-klasse-aantallen hierboven zijn **indicatief**; het gezaghebbende totaal is de `Tests run: 129`-uitkomst uit het run-bewijs bovenaan dit document. Kleine telverschillen kunnen ontstaan doordat enkele klassen sinds de oorspronkelijke telling tests hebben gekregen.
+> Het gezaghebbende totaal is de `Tests run: 129`-uitkomst (zonder Docker) uit het run-bewijs bovenaan dit document; mét Docker komen daar de 3 integratietests bij tot 132.
 
 ### 2.3 Operationele test-scripts — performance & resilience
 
