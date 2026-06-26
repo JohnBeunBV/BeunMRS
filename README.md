@@ -246,7 +246,7 @@ BeunMRS/
 │   │   ├── service/        # NotificationDispatcher, PersonContactService
 │   │   ├── tenant/         # Multi-tenant registratie, API key filter, TenantContext
 │   │   └── util/           # MessageHelper (tijd, locatie, instructies formatting)
-│   └── src/test/           # 87 unit tests (Mockito)
+│   └── src/test/           # 129 geautomatiseerde JUnit-tests (unit, security, contract, integratie)
 ├── infra/
 │   ├── nginx/              # TLS 1.3 reverse proxy (self-signed cert voor dev)
 │   ├── postgres/init/      # 00_schema.sql — 8 tabellen
@@ -262,7 +262,7 @@ BeunMRS/
     ├── Realisatielogboek/  # D4a/b/c: tools, AI-gebruik, commits per teamlid
     ├── PerformanceRapport/ # Belastingstests (166 notif/sec)
     ├── Security/           # Security audit rapport
-    ├── Tests/              # Testrapport (109 tests)
+    ├── Tests/              # Testrapport (129 tests)
     └── Info/               # Opdrachtomschrijving, Postman requests
 ```
 
@@ -289,7 +289,7 @@ BeunMRS/
 | [C4-diagrammen](docs/C4-diagrammen/) | Systeemcontext (L1), Containers (L2), Componenten notification-svc (L3) — `.drawio` |
 | [ADR-001 t/m ADR-011](docs/ADR's/) | Alle architectuurbeslissingen met alternatieven en onderbouwing |
 | [FMEA](docs/FMEA/FMEA_Documentatie.md) | 11 failure modes met risicomatrix, ADR-koppeling, code en tests |
-| [Testrapport](docs/Tests/testrapport.md) | 109 tests: unit/security/contract/integratie + requirement-mapping |
+| [Testrapport](docs/Tests/testrapport.md) | 129 tests: unit/security/contract/integratie + requirement-mapping |
 | [Beheerdershandleiding](docs/README-beheerder.md) | Installatie, tenant-configuratie, productie-TLS, monitoring |
 | [Realisatielogboek](docs/Realisatielogboek/realisatielogboek.md) | Ontwikkeltools, AI-gebruik, commits per teamlid |
 | [Security Audit](docs/Security/SECURITY-AUDIT.md) | OWASP top 10 verificatie, productie-checklist |

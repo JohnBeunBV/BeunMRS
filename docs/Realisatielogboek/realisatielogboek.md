@@ -62,11 +62,11 @@ Gegenereerd op 2026-06-25 via `git log --format="%an" | Sort-Object | Group-Obje
 
 | Teamlid | Git-gebruikersnaam | Commits | Hoofdbijdragen |
 |---|---|---|---|
-| Wassim Balouda | Wasssiimm | 45 | C4-diagrammen, README, PR-beheer, FMEA-documentatie, RabbitMQ topologie |
+| Wassim Balouda | Wasssiimm | 46 | C4-diagrammen, README, PR-beheer, FMEA-documentatie, RabbitMQ topologie |
 | Thijs van de Veen | Dice-cmd | 21 | OpenMRS poller (`OpenMrsAppointmentPoller`, `AppointmentReconciler`), `ReminderScheduler`, `ReminderDispatchJob`, `DataRetentionJob`, testrapport, herkansingswerk (FMEA-claims, ADR-002, ADR-011, repo-hygiëne) |
 | Nick de Rooij | NickdeRooij | 13 | Provider adapters (SwiftSend, LegacyLink, SecurePost, AsyncFlow), `NotificationDispatcher`, `NotificationProviderContractTest` |
 | Storm Kroonen | S.k2004 | 11 | Architectuurontwerp, multi-tenant SaaS kern (`TenantContext`, `TenantService`, `TenantApiKeyFilter`), security hardening (`GlobalExceptionHandler`, AES-256), ADRs, Docker Compose |
-| **Totaal** | | **90** | |
+| **Totaal** | | **91** | |
 
 ---
 
