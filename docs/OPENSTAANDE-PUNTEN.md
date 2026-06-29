@@ -133,7 +133,7 @@ De docent: _"In de presentatie zien we dit ook terug."_ De documenten zijn nu go
 
 **Acties:**
 
-1. Maak `docs/presentatie-draaiboek.md` met tijdsindeling (30 min) waarin **traceerbaarheid en FMEA-doorwerking de hoofdmoot zijn**, niet een feature-tour.
+1. Maak `docs/Presentatie/presentatie-draaiboek.md` met tijdsindeling (30 min) waarin **traceerbaarheid en FMEA-doorwerking de hoofdmoot zijn**, niet een feature-tour.
 2. Verplichte onderdelen in de presentatie:
    - Eén requirement **live** van eis → ADR → code → test → demo (zie A1).
    - FMEA **live**: één failure mode + de chaos-test als bewijs (zie A2).
