@@ -180,18 +180,55 @@
 
 ---
 
-## Slide 16 — Testresultaten (per soort)
+## Slide 16 — Testen: aanpak & testpiramide
 
-- **Op de slide:** de tabel met 110 unit / 9 security / 10 contract / 3 integratie / chaos / performance. Eventueel een screenshot van de groene `BUILD SUCCESS`.
-- **Sprekersnotitie:** benadruk de **additionele methodieken** (security, architectuur/contract, chaos) — dat is de 20-punten-hefboom voor testen. Noem zélf één zwakte + verbeterpunt (eerlijk = sterker). Voor coverage: niet op slide, maar als ze vragen → eerlijk antwoorden (zie draaiboek blok 4).
-- **Waar te vinden / screenshot:**
-  - Volledig overzicht: [`../Tests/testrapport.md`](../Tests/testrapport.md). Screenshot de run-bewijs-regel `Tests run: 129, Failures: 0`.
-  - Tests zelf: `notification-service/src/test/java/com/openmrs/notification/...`.
-  - Chaos/performance: `scripts/circuitbreaker-test.ps1`, `scripts/loadtest.ps1`.
+- **Op de slide:** de gelaagde aanpak (unit → security → contract → integratie → operationeel), 129 groen, tooling-overzicht.
+- **Sprekersnotitie:** introduceer de testpiramide en waaróm gelaagd: snelle unit-tests onderaan, dure-maar-realistische integratietests bovenaan, plus operationele tests die je met mocks niet kunt aantonen. Zeg dat je nu per laag inzoomt.
+- **Waar te vinden / screenshot:** run-bewijs bovenaan [`../Tests/testrapport.md`](../Tests/testrapport.md) — screenshot `Tests run: 129, Failures: 0`. Eventueel een testpiramide-figuur.
 
 ---
 
-## Slide 17 — Realisatieverantwoording: ontwikkeltools
+## Slide 17 — Unit-tests (110)
+
+- **Op de slide:** 110 unit-tests met JUnit 5 + Mockito; wat ze dekken.
+- **Sprekersnotitie:** het fundament. Componenten geïsoleerd met mocks, draait in seconden. Noem de herkansing-toevoeging (5 job-/service-testklassen). Geef één concreet voorbeeld, bv. ReminderSchedulerTest die de 24h/1h-berekening tot op de seconde checkt.
+- **Waar te vinden / screenshot:** kies een leesbare testklasse, bv. `notification-service/src/test/java/com/openmrs/notification/scheduler/ReminderSchedulerTest.java` of `outbox/OutboxServiceTest.java`. Screenshot een paar `@Test`-methodes.
+
+---
+
+## Slide 18 — Security-tests (9)
+
+- **Op de slide:** 9 security-tests met Spring MockMvc; negatieve scenario's + cross-tenant.
+- **Sprekersnotitie:** dit is een **additionele methodiek** (telt voor de 20). Benadruk de cross-tenant isolatie: sleutel A mag nooit naar tenant B resolven — bewijst NFR-1 op de inkomende keten. Ook ThreadLocal-hygiëne (context gewist, ook bij exception).
+- **Waar te vinden / screenshot:** `notification-service/src/test/java/com/openmrs/notification/tenant/TenantApiKeyFilterTest.java`. Screenshot de cross-tenant-test.
+
+---
+
+## Slide 19 — Architectuur- / contract-tests (10)
+
+- **Op de slide:** 10 contract-tests (classpath-scan + reflectie) die het provider-extension-point afdwingen.
+- **Sprekersnotitie:** **additionele methodiek (architectuur) — sterk punt.** Uitbreidbaarheid is geen belofte in proza maar wordt op build-time afgedwongen: een nieuwe provider zonder `@Component`, met dubbele naam of buiten de CHECK-constraint laat de build falen.
+- **Waar te vinden / screenshot:** `NotificationProviderContractTest` in `notification-service/src/test/...`. Screenshot de test die alle 4 providers valideert.
+
+---
+
+## Slide 20 — Integratietests (3)
+
+- **Op de slide:** 3 integratietests met Testcontainers + echte PostgreSQL 16; de volledige keten.
+- **Sprekersnotitie:** wat mocks niet kunnen — de echte database met het productieschema. Valideert JSONB, CHECK-constraints, SHA-256 key-lookup én multi-tenant isolatie tegen de DB-grens. Docker-gated → 132 tests mét Docker.
+- **Waar te vinden / screenshot:** `EndToEndNotificationFlowTest` in `notification-service/src/test/...`. Screenshot de Testcontainers-output of de test zelf.
+
+---
+
+## Slide 21 — Chaos- & performance-tests (operationeel)
+
+- **Op de slide:** twee scripts tegen de live stack; chaos (NFR-7) + performance (166 notif/sec).
+- **Sprekersnotitie:** **20-punten-hefboom: additionele methodieken + meetbaar gedrag.** Chaos bewijst herstel zonder berichtverlies bij een OpenMRS-storing; de loadtest meet de doorvoer. Verwijs naar de FMEA (blok 3) — dit is het bewijs dat de maatregelen werken. Coverage niet op slide; als ze vragen → eerlijk (zie draaiboek blok 4).
+- **Waar te vinden / screenshot:** `scripts/circuitbreaker-test.ps1`, `scripts/loadtest.ps1`; cijfers in [`../PerformanceRapport/PERFORMANCE-RAPPORT.md`](../PerformanceRapport/PERFORMANCE-RAPPORT.md). Screenshot Grafana onder load.
+
+---
+
+## Slide 22 — Realisatieverantwoording: ontwikkeltools
 
 - **Op de slide:** de tools-lijst.
 - **Sprekersnotitie:** kort per tool waaróm (waarde + kosten). Niet opsommen maar reflecteren: bv. Docker Compose = hele stack in één commando = snelle iteratie.
@@ -199,7 +236,7 @@
 
 ---
 
-## Slide 18 — Realisatieverantwoording: AI & zelfredzaamheid
+## Slide 23 — Realisatieverantwoording: AI & zelfredzaamheid
 
 - **Op de slide:** AI-inzet, waarde/kosten, en expliciet de zelfredzaamheid.
 - **Sprekersnotitie:** dit is belangrijk voor de CGI-reflectie. Zeg: AI deed boilerplate/opmaak, maar de **architectuurkeuzes (ADR's) en de FMEA-scenario's bepaalden wij zelf**; beveiligingsgrenzen en domeinkeuzes corrigeerden we handmatig. Geef één concreet voorbeeld (bv. het ontbrekende `finally`-blok in de tenant-filter dat handmatig is toegevoegd).
@@ -207,7 +244,7 @@
 
 ---
 
-## Slide 19 — Live demonstratie
+## Slide 24 — Live demonstratie
 
 - **Op de slide:** de 5 demo-stappen als checklist (zodat het publiek de flow volgt).
 - **Sprekersnotitie:** spreek de stappen uit terwijl je ze doet. Verklaar de ~2 min poller-wachttijd met architectuur-uitleg (poller → consumer → cancelReminders). Houd de fallback-opname klaar.
@@ -215,7 +252,7 @@
 
 ---
 
-## Slide 20 — Afronding: alles aantoonbaar + zelfbeoordeling
+## Slide 25 — Afronding: alles aantoonbaar + zelfbeoordeling
 
 - **Op de slide:** de samenvatting (23 requirement-ID's → 33 detailregels ✅, 11 ADR's, FMEA→test, 129 tests, SOLID+Strategy).
 - **Sprekersnotitie:** sluit de cirkel naar slide 3: "we beloofden aantoonbaarheid — dit is het bewijs." Zeg expliciet dat je minimaal de 'Goed'-kolom van de rubric haalt en waarom.
@@ -223,7 +260,7 @@
 
 ---
 
-## Slide 21 — Vragen?
+## Slide 26 — Vragen?
 
 - **Op de slide:** "Vragen?" + teamnaam.
 - **Sprekersnotitie:** verwijs vragen naar de matrix-rij + ADR + test. Bereid de Q&A-tabel uit het draaiboek §7 voor — vooral OpenTelemetry, polling-vs-events, multi-tenancy en coverage.

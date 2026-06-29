@@ -71,11 +71,11 @@ Deze agenda staat op slide 2 en volgt exact de rubric-criteria:
 | 0:00 | 2:00 | **Intro & agenda** | probleem, SaaS-doel, team, agenda | — |
 | 2:00 | 7:00 | **1. Architectuur & bedrijfsprocessen** | alle FR + NFR (thematisch) · overwogen alternatieven · C4 L1→L3 | — |
 | 9:00 | 3:00 | **2. Duurzaam ontwerp** | SOLID-principes · uitbreidbaarheid · multi-tenancy | — |
-| 12:00 | 4:30 | **3. Betrouwbaarheid** | FMEA + maatregelen · performance · monitoring | 🎞️ opname (chaos) |
-| 16:30 | 3:00 | **4. Testresultaten** | per testsoort · 129 tests groen | — |
-| 19:30 | 2:00 | **5. Realisatieverantwoording** | tools · AI + zelfredzaamheid | — |
-| 21:30 | 7:00 | **6. LIVE DEMONSTRATIE** | register → afspraak → reminders → annuleren · Grafana live | ✅ live |
-| 28:30 | 1:30 | **Afronding + buffer** | "33/33 aantoonbaar" + zelfbeoordeling | — |
+| 12:00 | 4:00 | **3. Betrouwbaarheid** | FMEA + maatregelen · performance · monitoring | 🎞️ opname (chaos) |
+| 16:00 | 5:00 | **4. Testresultaten** | 6 slides: aanpak + unit · security · contract · integratie · chaos/performance | — |
+| 21:00 | 2:00 | **5. Realisatieverantwoording** | tools · AI + zelfredzaamheid | — |
+| 23:00 | 6:00 | **6. LIVE DEMONSTRATIE** | register → afspraak → reminders → annuleren · Grafana live | ✅ live |
+| 29:00 | 1:00 | **Afronding** | "33/33 aantoonbaar" + zelfbeoordeling | — |
 
 > Tijden zijn richtlijn. Test de werkelijke duur in een generale repetitie en stel bij. De **chaos-test draait 15–20 min** en past niet live in het slot → toon die als korte opname/screenshot in blok 3. De **loadtest + Grafana is snel en kan wél live** in blok 6.
 
@@ -172,18 +172,20 @@ Bron: [`docs/ADR's/`](../ADR's/) (ADR-001 t/m ADR-011).
 
 ---
 
-### Blok 4 — Testresultaten (~3 min) — *vasthouden + naar 20*
+### Blok 4 — Testresultaten (~5 min, 6 slides) — *vasthouden + naar 20*
 
-**Doel:** aantonen dat tests werking én betrouwbaarheid valideren, mét additionele methodieken (security, architectuur, chaos) — geautomatiseerd.
+**Doel:** aantonen dat tests werking én betrouwbaarheid valideren, mét additionele methodieken (security, architectuur, chaos) — geautomatiseerd. Per testsoort één slide, naar het model van een groep die hier maximaal scoorde.
 
-| Testsoort | Aantal | Tool | Belangrijk |
-|---|---|---|---|
-| **Unit** | 110 | JUnit 5 + Mockito | providers, scheduler, dispatcher, idempotentie, retentie, retry |
-| **Security** | 9 | JUnit + Spring MockMvc | ontbrekende/ongeldige API-key, cross-tenant isolatie, ThreadLocal-hygiëne |
-| **Architectuur / contract** | 10 | classpath-scan + reflectie | provider-extension-point op build-time afgedwongen |
-| **Integratie** | 3 | Testcontainers + PostgreSQL 16 | echte keten *register → dispatch → notification_log*, CHECK-constraints |
-| **Chaos (operationeel)** | 1 script | Docker + PowerShell | storing → buffering → herstel zonder verlies |
-| **Performance (operationeel)** | 1 script | loadtest + Grafana/Prometheus | doorvoer + latency onder belasting |
+| # | Slide | Aantal | Tool | Kernpunt |
+|---|---|---|---|---|
+| 4.0 | **Testaanpak & testpiramide** | — | — | gelaagde aanpak; 129 groen; tooling-overzicht |
+| 4.1 | **Unit-tests** | 110 | JUnit 5 + Mockito | providers, scheduler, dispatcher, idempotentie, retentie, retry |
+| 4.2 | **Security-tests** | 9 | Spring MockMvc | ontbrekende/ongeldige API-key, cross-tenant isolatie, ThreadLocal-hygiëne |
+| 4.3 | **Architectuur- / contract-tests** | 10 | classpath-scan + reflectie | provider-extension-point op build-time afgedwongen |
+| 4.4 | **Integratietests** | 3 | Testcontainers + PostgreSQL 16 | echte keten *register → dispatch → notification_log* |
+| 4.5 | **Chaos & performance** | 2 scripts | Docker + loadtest/Grafana | storing→herstel zonder verlies · 166 notif/sec |
+
+**Per slide screenshot-tip:** unit → een testklasse · security → `TenantApiKeyFilterTest` (cross-tenant) · contract → `NotificationProviderContractTest` · integratie → Testcontainers-output · chaos/performance → Grafana onder load. Code: `notification-service/src/test/...`; scripts: `scripts/`.
 
 - **129 JUnit-tests groen** — 0 failures, 0 errors (JDK 24, geverifieerd 26 juni 2026); 132 mét Docker.
 - Herkansing-toevoeging benoemen: 5 resilience-/job-/service-testklassen (`ReminderDispatchJobTest`, `FailedNotificationRetryJobTest`, `DataRetentionJobTest`, `OutboxRelayJobTest`, `PersonContactServiceTest`).
