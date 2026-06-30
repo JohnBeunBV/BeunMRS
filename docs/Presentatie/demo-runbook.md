@@ -97,6 +97,34 @@ ORDER BY created_at DESC;
 
 ---
 
+## 4b. De patiënt ontvangt de 24h- én 1h-herinnering (FR-1a/b) *(±3 min)*
+
+> Je kunt geen 24 uur wachten, dus toon het in twee delen: (1) de herinneringen zijn op de **juiste tijd** ingepland, en (2) een herinnering gaat **live af** via een "kort-lont"-afspraak. De dispatch-job verstuurt elke ~minuut de herinneringen waarvan de tijd is verstreken.
+
+**Deel 1 — De timing klopt (DBeaver).**
+In de query van stap 4 zie je de kolom `send_at`: voor de `24h`-rij staat die exact 24 uur vóór de afspraak, voor de `1h`-rij exact 1 uur ervoor. Reken het samen voor (afspraaktijd − 24u / − 1u) → bewijs dat de berekening klopt.
+
+**Deel 2 — Een herinnering live laten afgaan.** Maak een afspraak met een kort lont:
+
+- **24h-herinnering live:** afspraak op **morgen, ~3 minuten ná de huidige tijd** (bv. nu 14:30 → morgen 14:33). De 24h-herinnering valt dan op *nu + 3 min* → binnen ~1–3 min verschijnt een rij `event_type = REMINDER_24H`, `status = sent`, met de tekst *"Herinnering: uw afspraak is morgen om…"*.
+- **1h-herinnering live:** afspraak op **vandaag, ~1 uur + 3 min vanaf nu** (bv. nu 14:30 → vandaag 15:33). De 1h-herinnering valt op *nu + 3 min* → je krijgt een `REMINDER_1H`-rij (*"…over een uur…"*). *(De 24h-herinnering van déze afspraak gaat ook af — die tijd ligt al in het verleden — dat is normaal; wijs naar de REMINDER_1H-rij.)*
+
+Toon de verstuurde herinneringen (DBeaver):
+```sql
+SELECT event_type, status, sent_at
+FROM notification_log nl JOIN tenants t ON t.id = nl.tenant_id
+WHERE t.slug = 'amc' AND event_type IN ('REMINDER_24H','REMINDER_1H')
+ORDER BY sent_at DESC;
+```
+
+**De patiënt-kant:** open **FakeComWorld** (`http://localhost:1337`) — toont het de ontvangen berichten, dan zie je daar de SMS bij de patiënt binnenkomen. Anders is de `status = sent`-rij (+ de service-log met de berichttekst) het bewijs dat het bericht is afgeleverd.
+
+> **Voorbereidingstip:** maak deze kort-lont-afspraken **vlak vóór** dit demo-onderdeel, zodat de herinnering net tijdens je uitleg binnenkomt. Patiënt moet een **telefoonnummer** hebben, anders zie je `failed` i.p.v. `sent`.
+
+> **Als de SPA alleen vaste tijdsloten toelaat** (waardoor "+3 min" niet exact lukt): maak de afspraak via de **REST-appendix** onderaan (`postmanrequests.md` STAP 4) — daar zet je `startDateTime` op de seconde nauwkeurig, bv. `now + 24h + 3min`. Dat geeft je volledige controle over wanneer de herinnering afgaat.
+
+---
+
 ## 5. Afspraak annuleren — in de SPA *(±2 min, de kern van FR-1g)*
 
 Ga terug naar de afspraak in de SPA → wijzig de status naar **Cancelled**.
@@ -130,6 +158,27 @@ FROM notification_log nl JOIN tenants t ON t.id = nl.tenant_id
 GROUP BY t.slug, nl.channel, nl.status
 ORDER BY t.slug;
 ```
+
+---
+
+## 9. (Optioneel) Retry bij falen tonen (NFR-7 / FMEA FM-5) *(±1 min)*
+
+> Laat zien dat een mislukte verzending niet verloren gaat maar opnieuw wordt geprobeerd.
+
+**Snelste manier:** maak een afspraak voor een patiënt **zónder telefoonnummer**. De verzending mislukt → de `FailedNotificationRetryJob` neemt het over.
+
+Toon in DBeaver:
+```sql
+SELECT event_type, status, retry_count, next_retry_at, error_message
+FROM notification_log nl JOIN tenants t ON t.id = nl.tenant_id
+WHERE t.slug = 'amc' AND status IN ('failed','permanently_failed')
+ORDER BY created_at DESC;
+```
+Je ziet `status = failed`, een oplopende `retry_count`, en een `next_retry_at` (volgende geplande poging).
+
+**Vertel hierbij:** de retry-job probeert **3×** opnieuw met **exponentiële backoff (5 → 15 min)**; lukt het dan nog niet, dan wordt de status `permanently_failed` en stopt het — geen oneindige loop. Je ziet niet alle retries live (duurt ~20 min); de `failed`-rij + `next_retry_at` bewijzen dat het mechanisme **gewapend** is.
+
+> De **diepere** resilience-proef (OpenMRS-storing → outbox buffert → herstel zonder verlies) is de chaos-test `scripts/circuitbreaker-test.ps1` — die draait 15–20 min, dus toon je als **opname**.
 
 ---
 
