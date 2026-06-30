@@ -149,11 +149,11 @@
 
 ## Slide 13 — Betrouwbaarheid: FMEA
 
-- **Op de slide:** wat FMEA is + één failure mode volledig uitgewerkt (FM-9).
-- **Sprekersnotitie:** leg uit dat je 11 faalscenario's vooraf in kaart bracht, elk met maatregel én test. Loop FM-9 helemaal door: risico → outbox (ADR-007) → code → test → risicoreductie 10→1.
+- **Op de slide:** wat FMEA is + één failure mode volledig uitgewerkt (**FM-6**, SecurePost JWT — bewust niet FM-9, want dat overlapt met slide 12's outbox).
+- **Sprekersnotitie:** leg uit dat je 11 faalscenario's vooraf in kaart bracht, elk met maatregel én test. Loop FM-6 helemaal door: JWT-token verloopt na ~3 min → token-cache met proactieve refresh (30s buffer) + 401-retry (ADR-006) → `SecurePostProvider.getValidToken()` → `SecurePostProviderTest` → risicoreductie 12→1 (92%).
 - **Waar te vinden / screenshot:**
   - FMEA: [`../FMEA/FMEA_Documentatie.md`](../FMEA/FMEA_Documentatie.md) + Excel [`../FMEA/FMEA_BeunMRS.xlsx`](../FMEA/FMEA_BeunMRS.xlsx). Screenshot de risicomatrix of de koppelingstabel.
-  - FM-9 code: `outbox/OutboxService.java` → `writePending()` en `outbox/OutboxRelayJob.java` → `relay()`.
+  - FM-6 code: `adapter/securepost/SecurePostProvider.java` → `getValidToken()` (regels 127–136, de 30s-buffer) en de 401-retry in `send()` (regels 65–71).
 
 ---
 
